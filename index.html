@@ -834,13 +834,17 @@ db.version(1).stores({
   meta:         '&key',
 });
 
+// Alpine wraps reactive state in Proxy objects, which IndexedDB can't
+// structured-clone. JSON roundtrip strips Proxies down to plain data.
+const toPlain = (v) => (v == null ? v : JSON.parse(JSON.stringify(v)));
+
 const DB = {
   async getUser() {
     return (await db.user.get('me')) || null;
   },
   async saveUser(patch) {
     const existing = (await db.user.get('me')) || { id: 'me', name: '', pinHash: null, pinSalt: null, lastNavRefresh: null };
-    const next = { ...existing, ...patch, id: 'me' };
+    const next = { ...existing, ...toPlain(patch), id: 'me' };
     await db.user.put(next);
     return next;
   },
@@ -854,13 +858,13 @@ const DB = {
     await db.transaction('rw', db.user, db.funds, db.transactions, async () => {
       await db.funds.clear();
       await db.transactions.clear();
-      if (user) await db.user.put({ id: 'me', pinHash: null, pinSalt: null, lastNavRefresh: null, ...user });
-      if (funds?.length) await db.funds.bulkPut(funds);
-      if (transactions?.length) await db.transactions.bulkPut(transactions);
+      if (user) await db.user.put({ id: 'me', pinHash: null, pinSalt: null, lastNavRefresh: null, ...toPlain(user) });
+      if (funds?.length) await db.funds.bulkPut(toPlain(funds));
+      if (transactions?.length) await db.transactions.bulkPut(toPlain(transactions));
     });
   },
   async putFunds(funds) {
-    await db.funds.bulkPut(funds);
+    await db.funds.bulkPut(toPlain(funds));
   },
   async setMeta(key, value) {
     await db.meta.put({ key, value });
@@ -1288,10 +1292,12 @@ async function parseCAS(file, password) {
   const lines = await extractLines(pdf);
 
   // Detect format. v1 only supports CAMS CAS — reject KFintech / NSDL clearly.
-  const headerSlice = lines.slice(0, Math.min(lines.length, 60)).map(l => l.text).join(' | ');
-  const isCams = /CAMSCAS(?:WS)?/i.test(headerSlice);
-  const mentionsKfin = /KFINCAS|KFINTECH\s+Consolidated|WWW\.KFINTECH\.COM/i.test(headerSlice);
-  const mentionsNsdl = /\bNSDL\b.*e-?CAS|NSDL\s+Consolidated/i.test(headerSlice);
+  // Scan all lines: the CAMSCAS marker sits in the per-page footer, which can
+  // appear well beyond the first screen of text.
+  const fullText = lines.map(l => l.text).join(' | ');
+  const isCams = /CAMSCAS(?:WS)?|camsonline\.com/i.test(fullText);
+  const mentionsKfin = /KFINCAS|KFINTECH\s+Consolidated|WWW\.KFINTECH\.COM|mfs\.kfintech\.com/i.test(fullText);
+  const mentionsNsdl = /\bNSDL\b.*e-?CAS|NSDL\s+Consolidated|nsdl\.co\.in.*cas/i.test(fullText);
   if (!isCams) {
     if (mentionsKfin) {
       throw Object.assign(new Error('KFintech statements are not supported yet. Please import a CAMS CAS.'), { code: 'UNSUPPORTED_KFINTECH' });
@@ -1887,7 +1893,8 @@ document.addEventListener('alpine:init', () => {
           await this.commitImport(payload);
         }
       } catch (e) {
-        console.error('import failed', e);
+        // NEED_PASSWORD is the normal "this PDF is encrypted, prompt for password" path — not an error to surface.
+        if (e.code !== 'NEED_PASSWORD') console.error('import failed', e);
         if (e.code === 'INCORRECT_PASSWORD' || e.code === 'NEED_PASSWORD') {
           this.importStep = 'password';
           this.passwordError = e.message;
