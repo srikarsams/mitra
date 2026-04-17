@@ -541,7 +541,7 @@
       </section>
 
       <footer class="pt-12 text-center border-t border-surface-container-high">
-        <p class="text-[10px] text-secondary uppercase tracking-[0.2em] font-medium">Mitra — Private Portfolio</p>
+        <p class="text-[10px] text-secondary uppercase tracking-[0.2em] font-medium" x-text="`Mitra v${appVersion} — Private Portfolio`"></p>
         <p class="text-[10px] text-on-surface-variant mt-2 max-w-xs mx-auto">Mutual fund investments are subject to market risks. Read all scheme related documents carefully.</p>
       </footer>
 
@@ -675,7 +675,7 @@
       <section>
         <h3 class="text-[12px] font-semibold text-outline uppercase tracking-wider mb-3 px-1">About</h3>
         <div class="bg-surface-container-lowest rounded-xl border border-outline-variant/40 p-5 space-y-2">
-          <p class="text-[13px] text-primary font-semibold">Mitra v1.0</p>
+          <p class="text-[13px] text-primary font-semibold" x-text="`Mitra v${appVersion}`"></p>
           <p class="text-[12px] text-on-surface-variant leading-relaxed">
             A privacy-first mutual fund portfolio tracker. Your statement is parsed entirely in this browser; no data is sent to any server except the public AMFI NAV endpoint.
           </p>
@@ -844,6 +844,11 @@
 <script src="https://cdn.jsdelivr.net/npm/dexie@3.2.7/dist/dexie.min.js"></script>
 
 <script>
+// ============================================================
+// App version — bump on each release and shown in Settings + footer.
+// ============================================================
+const APP_VERSION = '1.1.0';
+
 // ============================================================
 // DB (Dexie)
 // ============================================================
@@ -1626,6 +1631,7 @@ document.addEventListener('alpine:init', () => {
   Alpine.data('app', () => ({
     // Expose helpers to templates
     fmt,
+    appVersion: APP_VERSION,
 
     ready: false,
     currentView: 'empty', // empty | import | dashboard | fundDetail | settings | pinGate
