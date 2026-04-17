@@ -6,3 +6,10 @@
 
 # Do not commit any PDF — real CAS statements contain PII (PAN, mobile, transactions)
 *.pdf
+
+# wrangler files
+.wrangler
+.dev.vars*
+!.dev.vars.example
+.env*
+!.env.example
