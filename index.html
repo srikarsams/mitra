@@ -103,7 +103,11 @@
         Unlock
       </button>
     </form>
-    <p class="text-[11px] text-outline uppercase tracking-wider mt-8">Your data stays on this device</p>
+    <button type="button" @click="showForgotPinConfirm = true"
+            class="mt-5 text-[13px] font-medium text-outline hover:text-primary transition-colors underline decoration-outline/30 underline-offset-2">
+      Forgot PIN?
+    </button>
+    <p class="text-[11px] text-outline uppercase tracking-wider mt-6">Your data stays on this device</p>
   </div>
 </div>
 
@@ -780,6 +784,24 @@
               class="flex-1 border border-outline-variant text-primary py-3 rounded-lg font-semibold text-[14px] hover:bg-surface-container transition-colors">Cancel</button>
       <button @click="confirmReset()"
               class="flex-1 bg-white border border-error text-error py-3 rounded-lg font-semibold text-[14px] hover:bg-error-container transition-colors">Reset</button>
+    </div>
+  </div>
+</div>
+
+<!-- Forgot PIN confirmation -->
+<div x-show="showForgotPinConfirm" x-transition.opacity @click.self="showForgotPinConfirm = false"
+     class="fixed inset-0 z-[80] bg-black/30 flex items-center justify-center px-4">
+  <div class="w-full max-w-sm bg-surface-container-lowest rounded-xl border border-outline-variant/40 shadow-[0_10px_30px_rgba(0,0,0,0.12)] p-6 text-center">
+    <div class="w-12 h-12 rounded-full bg-error-container mx-auto flex items-center justify-center mb-4">
+      <span class="material-symbols-outlined text-error">delete_forever</span>
+    </div>
+    <h2 class="text-[17px] font-semibold text-primary mb-2">Reset and erase all data?</h2>
+    <p class="text-[13px] text-on-surface-variant mb-6 leading-relaxed">Without your PIN, there's no way to decrypt your portfolio. The only recovery is to erase the data stored on this device and re-import your CAS statement.</p>
+    <div class="flex gap-3">
+      <button @click="showForgotPinConfirm = false"
+              class="flex-1 border border-outline-variant text-primary py-3 rounded-lg font-semibold text-[14px] hover:bg-surface-container transition-colors">Cancel</button>
+      <button @click="confirmForgotPin()"
+              class="flex-1 bg-white border border-error text-error py-3 rounded-lg font-semibold text-[14px] hover:bg-error-container transition-colors">Erase &amp; Restart</button>
     </div>
   </div>
 </div>
@@ -1613,6 +1635,7 @@ document.addEventListener('alpine:init', () => {
     showCasHelp: false,
     showReplaceConfirm: false,
     showResetConfirm: false,
+    showForgotPinConfirm: false,
     showPinSetup: false,
     navBanner: '',
 
@@ -1702,6 +1725,7 @@ document.addEventListener('alpine:init', () => {
       if (this.showCasHelp) this.showCasHelp = false;
       else if (this.showReplaceConfirm) this.showReplaceConfirm = false;
       else if (this.showResetConfirm) this.showResetConfirm = false;
+      else if (this.showForgotPinConfirm) this.showForgotPinConfirm = false;
       else if (this.showPinSetup) this.cancelPinSetup();
     },
 
@@ -2117,13 +2141,24 @@ document.addEventListener('alpine:init', () => {
       }
     },
 
-    async confirmReset() {
-      this.showResetConfirm = false;
+    async _resetAll() {
       await DB.wipe();
       session.unlocked = false;
       await this.$store.portfolio.loadFromDB();
       this.nameInput = '';
+      this.pinEntry = '';
+      this.pinError = '';
       this.currentView = 'empty';
+    },
+
+    async confirmReset() {
+      this.showResetConfirm = false;
+      await this._resetAll();
+    },
+
+    async confirmForgotPin() {
+      this.showForgotPinConfirm = false;
+      await this._resetAll();
     },
   }));
 });
