@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Mitra - Import Data</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                    "secondary-fixed-dim": "#a4abbb",
+                    "on-tertiary-container": "#ffffff",
+                    "surface-container-high": "#e7e8e9",
+                    "secondary": "#585f6c",
+                    "on-tertiary-fixed-variant": "#7ffc97",
+                    "on-surface": "#191c1d",
+                    "on-secondary": "#ffffff",
+                    "tertiary": "#00461a",
+                    "surface-tint": "#575e70",
+                    "surface-container-low": "#f3f4f5",
+                    "surface-variant": "#e1e3e4",
+                    "primary-fixed-dim": "#404758",
+                    "on-error-container": "#410002",
+                    "primary-container": "#343b4c",
+                    "on-primary-container": "#ffffff",
+                    "on-primary": "#dce2f7",
+                    "inverse-surface": "#2e3132",
+                    "surface-bright": "#f8f9fa",
+                    "surface-container-highest": "#e1e3e4",
+                    "primary-fixed": "#575e70",
+                    "secondary-container": "#ced4e4",
+                    "on-error": "#ffffff",
+                    "background": "#f8f9fa",
+                    "on-surface-variant": "#474747",
+                    "on-secondary-container": "#151c27",
+                    "on-primary-fixed": "#ffffff",
+                    "inverse-on-surface": "#f0f1f2",
+                    "outline": "#777777",
+                    "on-background": "#191c1d",
+                    "tertiary-fixed-dim": "#005320",
+                    "on-tertiary-fixed": "#ffffff",
+                    "primary": "#000000",
+                    "error": "#ba1a1a",
+                    "surface-container": "#edeeef",
+                    "surface-dim": "#d9dadb",
+                    "tertiary-container": "#00873a",
+                    "surface-container-lowest": "#ffffff",
+                    "secondary-fixed": "#c0c7d6",
+                    "surface": "#f8f9fa",
+                    "on-primary-fixed-variant": "#dce2f7",
+                    "outline-variant": "#c6c6c6",
+                    "on-tertiary": "#7ffc97",
+                    "error-container": "#ffdad6",
+                    "tertiary-fixed": "#006e2d",
+                    "on-secondary-fixed": "#151c27",
+                    "inverse-primary": "#c0c6db",
+                    "on-secondary-fixed-variant": "#353c48"
+            },
+            "borderRadius": {
+                    "DEFAULT": "0.25rem",
+                    "lg": "0.5rem",
+                    "xl": "0.75rem",
+                    "full": "9999px"
+            },
+            "fontFamily": {
+                    "headline": ["Inter"],
+                    "body": ["Inter"],
+                    "label": ["Inter"]
+            }
+          },
+        },
+      }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+            display: inline-block;
+            line-height: 1;
+            text-transform: none;
+            letter-spacing: normal;
+            word-wrap: normal;
+            white-space: nowrap;
+            direction: ltr;
+        }
+        body { font-family: 'Inter', sans-serif; }
+    </style>
+<style>
+    body {
+      min-height: 100dvh;
+      display: flex;
+      flex-direction: column;
+    }
+  </style>
+</head>
+<body class="bg-surface text-on-surface selection:bg-primary-container selection:text-on-primary-container">
+<!-- Top Navigation Shell -->
+<nav class="bg-white/80 dark:bg-gray-900/80 backdrop-blur-md fixed top-0 w-full z-50">
+<div class="flex justify-between items-center h-16 px-6 w-full max-w-md mx-auto">
+<div class="flex items-center gap-3">
+<div class="w-8 h-8 rounded-full bg-surface-container flex items-center justify-center overflow-hidden">
+<img alt="User profile" class="w-full h-full object-cover" data-alt="close up professional headshot of a woman with clean lighting and neutral background" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCf2U4OK4Ksk66ZFVOGew6zBdYFDkJhVUpEB1QnkG0CYRo1nORlIVW1q8xqintPxW8wr2oVosKFejPuSgZRUNSFKgwqGzxLe4WM28Tae7J9EKLroQluo_syFuQv5AUAmyPdfrjNyO9gku44Ouf_g1IJHLJtk3FWgBmF3Hefzgfnq5P1pz_H_o8dpAh9IajwMJwUMiMeOUvTcIWSGoOBCXInkN5WF0hyiLKtt1ocCEtL1t6Rk6I4xa5m8rM2wLH0c3I4ZZWRHIbuk9k"/>
+</div>
+<span class="text-xl font-bold tracking-tighter text-gray-900 dark:text-gray-50">Mitra</span>
+</div>
+<button class="w-10 h-10 flex items-center justify-center rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors active:opacity-80">
+<span class="material-symbols-outlined text-gray-900 dark:text-gray-50">settings</span>
+</button>
+</div>
+</nav>
+<!-- Main Canvas -->
+<main class="flex-1 flex flex-col pt-20 pb-40 px-6 max-w-md mx-auto w-full">
+<!-- Header Section -->
+<header class="mb-10 text-center">
+<div class="flex items-center justify-center gap-2 mb-3">
+<span class="text-[11px] font-bold tracking-widest uppercase text-on-surface-variant">Step 1 of 3</span>
+</div>
+<h1 class="text-2xl font-extrabold tracking-tight text-primary leading-tight">Import Financial Assets</h1>
+<p class="text-on-surface-variant text-sm mt-3 leading-relaxed max-w-[280px] mx-auto">
+                Upload your portfolio statement to synchronize your net worth with Mitra's secure ledger.
+            </p>
+</header>
+<!-- Drop Zone Section -->
+<section class="space-y-6">
+<div class="relative group">
+<input class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" id="file-upload" type="file"/>
+<div class="border-2 border-dashed border-outline-variant bg-surface-container-lowest rounded-2xl p-10 flex flex-col items-center justify-center text-center transition-all group-hover:border-primary group-hover:bg-surface-bright">
+<div class="w-14 h-14 bg-surface-container rounded-full flex items-center justify-center mb-5">
+<span class="material-symbols-outlined text-primary text-3xl">cloud_upload</span>
+</div>
+<div class="space-y-1">
+<p class="text-base font-bold text-primary">Tap to upload files</p>
+<p class="text-xs text-on-surface-variant">Drag and drop also supported</p>
+</div>
+<div class="mt-8">
+<button class="bg-primary text-surface-container-lowest px-8 py-3 rounded-full text-sm font-bold transition-all active:scale-95 shadow-sm" type="button">
+                            Browse Files
+                        </button>
+</div>
+</div>
+</div>
+<!-- Contextual Info / Formats -->
+<div class="flex flex-wrap justify-center gap-2">
+<span class="px-3 py-1 bg-surface-container-low text-on-surface-variant text-[10px] font-bold rounded-full border border-outline-variant/30 uppercase tracking-tighter">.CSV</span>
+<span class="px-3 py-1 bg-surface-container-low text-on-surface-variant text-[10px] font-bold rounded-full border border-outline-variant/30 uppercase tracking-tighter">.XLSX</span>
+<span class="px-3 py-1 bg-surface-container-low text-on-surface-variant text-[10px] font-bold rounded-full border border-outline-variant/30 uppercase tracking-tighter">.PDF</span>
+</div>
+</section>
+<!-- Compact File Card -->
+<section class="mt-10">
+<h3 class="text-[11px] font-black text-on-surface-variant uppercase tracking-[0.2em] mb-4 text-center">Selected File</h3>
+<div class="bg-white border border-outline-variant/50 rounded-2xl p-4 flex items-center gap-4 shadow-sm mx-auto w-full">
+<div class="w-10 h-10 bg-surface-container-high rounded-xl flex items-center justify-center">
+<span class="material-symbols-outlined text-primary">description</span>
+</div>
+<div class="flex-1 min-w-0">
+<p class="text-sm font-bold text-primary truncate">Q3_Portfolio_Summary.csv</p>
+<p class="text-[11px] text-on-surface-variant">1.2 MB • Ready to process</p>
+</div>
+<button class="w-9 h-9 flex items-center justify-center text-error hover:bg-error-container/50 rounded-full transition-colors">
+<span class="material-symbols-outlined text-base">close</span>
+</button>
+</div>
+</section>
+<!-- Information Block -->
+<section class="mt-auto pt-10">
+<div class="p-6 bg-surface-container-low/50 rounded-2xl border border-outline-variant/20 flex flex-col items-center text-center">
+<div class="w-10 h-10 bg-white rounded-full flex items-center justify-center mb-3 shadow-sm">
+<span class="material-symbols-outlined text-primary text-xl">shield</span>
+</div>
+<h4 class="text-xs font-bold text-primary mb-1 uppercase tracking-wider">Monastic Security Protocol</h4>
+<p class="text-[11px] text-on-surface-variant leading-relaxed max-w-[240px]">
+                    Files are encrypted locally before transmission. Your data never leaves our terminal without end-to-end encryption.
+                </p>
+</div>
+</section>
+</main>
+<!-- Navigation Action (Fixed/Bottom-aligned) -->
+<footer class="fixed bottom-0 left-0 right-0 p-6 bg-surface/90 backdrop-blur-lg border-t border-outline-variant/10 z-40">
+<div class="max-w-md mx-auto space-y-2">
+<button class="w-full bg-primary text-white py-4 rounded-xl font-extrabold tracking-tight text-sm shadow-xl shadow-black/10 active:scale-[0.98] transition-all">
+                Continue to Mapping
+            </button>
+<button class="w-full text-on-surface-variant py-2 text-xs font-bold hover:text-primary transition-colors tracking-wide uppercase">
+                Skip for now
+            </button>
+</div>
+</footer>
+<!-- Visual Polish: Ghost Layering Elements -->
+<div class="fixed inset-0 pointer-events-none z-[-1] opacity-40">
+<div class="absolute top-[-10%] right-[-10%] w-64 h-64 bg-surface-container-high rounded-full blur-[100px]"></div>
+<div class="absolute bottom-[-5%] left-[-5%] w-48 h-48 bg-surface-container rounded-full blur-[80px]"></div>
+</div>
+</body></html>

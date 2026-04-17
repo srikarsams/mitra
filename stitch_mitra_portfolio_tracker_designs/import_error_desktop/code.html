@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                    "secondary-fixed-dim": "#a4abbb",
+                    "on-tertiary-container": "#ffffff",
+                    "surface-container-high": "#e7e8e9",
+                    "secondary": "#585f6c",
+                    "on-tertiary-fixed-variant": "#7ffc97",
+                    "on-surface": "#191c1d",
+                    "on-secondary": "#ffffff",
+                    "tertiary": "#00461a",
+                    "surface-tint": "#575e70",
+                    "surface-container-low": "#f3f4f5",
+                    "surface-variant": "#e1e3e4",
+                    "primary-fixed-dim": "#404758",
+                    "on-error-container": "#410002",
+                    "primary-container": "#343b4c",
+                    "on-primary-container": "#ffffff",
+                    "on-primary": "#dce2f7",
+                    "inverse-surface": "#2e3132",
+                    "surface-bright": "#f8f9fa",
+                    "surface-container-highest": "#e1e3e4",
+                    "primary-fixed": "#575e70",
+                    "secondary-container": "#ced4e4",
+                    "on-error": "#ffffff",
+                    "background": "#f8f9fa",
+                    "on-surface-variant": "#474747",
+                    "on-secondary-container": "#151c27",
+                    "on-primary-fixed": "#ffffff",
+                    "inverse-on-surface": "#f0f1f2",
+                    "outline": "#777777",
+                    "on-background": "#191c1d",
+                    "tertiary-fixed-dim": "#005320",
+                    "on-tertiary-fixed": "#ffffff",
+                    "primary": "#000000",
+                    "error": "#DC2626",
+                    "surface-container": "#edeeef",
+                    "surface-dim": "#d9dadb",
+                    "tertiary-container": "#00873a",
+                    "surface-container-lowest": "#ffffff",
+                    "secondary-fixed": "#c0c7d6",
+                    "surface": "#f8f9fa",
+                    "on-primary-fixed-variant": "#dce2f7",
+                    "outline-variant": "#c6c6c6",
+                    "on-tertiary": "#7ffc97",
+                    "error-container": "#ffdad6",
+                    "tertiary-fixed": "#006e2d",
+                    "on-secondary-fixed": "#151c27",
+                    "inverse-primary": "#c0c6db",
+                    "on-secondary-fixed-variant": "#353c48"
+            },
+            "borderRadius": {
+                    "DEFAULT": "0.25rem",
+                    "lg": "0.5rem",
+                    "xl": "0.75rem",
+                    "full": "9999px"
+            },
+            "spacing": {},
+            "fontFamily": {
+                    "headline": ["Inter"],
+                    "body": ["Inter"],
+                    "label": ["Inter"]
+            }
+          },
+        },
+      }
+    </script>
+<style>
+        body { font-family: 'Inter', sans-serif; }
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+    </style>
+</head>
+<body class="bg-surface-container-low text-on-surface antialiased">
+<!-- Sidebar Navigation Shell -->
+<aside class="fixed left-0 top-0 hidden lg:flex flex-col h-screen w-64 border-r border-outline-variant/30 bg-surface-container-lowest z-40">
+<div class="px-6 pt-8 pb-10">
+<h1 class="text-lg font-black text-primary tracking-tighter">Mitra</h1>
+<p class="text-[10px] uppercase tracking-widest text-on-surface-variant font-medium">Wealth Tracker</p>
+</div>
+<nav class="flex-1 px-4 space-y-2">
+<a class="flex items-center gap-3 px-4 py-3 text-sm text-on-surface-variant hover:bg-surface-container transition-colors rounded-lg" href="#">
+<span class="material-symbols-outlined text-[20px]" data-icon="pie_chart">pie_chart</span>
+                Portfolio
+            </a>
+<a class="flex items-center gap-3 px-4 py-3 text-sm text-on-surface-variant hover:bg-surface-container transition-colors rounded-lg" href="#">
+<span class="material-symbols-outlined text-[20px]" data-icon="insights">insights</span>
+                Analysis
+            </a>
+<a class="flex items-center gap-3 px-4 py-3 text-sm text-on-surface-variant hover:bg-surface-container transition-colors rounded-lg" href="#">
+<span class="material-symbols-outlined text-[20px]" data-icon="account_balance">account_balance</span>
+                Funds
+            </a>
+<a class="flex items-center gap-3 px-4 py-3 text-sm text-on-surface-variant hover:bg-surface-container transition-colors rounded-lg" href="#">
+<span class="material-symbols-outlined text-[20px]" data-icon="history">history</span>
+                Activity
+            </a>
+</nav>
+<div class="p-6 border-t border-outline-variant/20">
+<div class="flex items-center gap-3">
+<div class="w-8 h-8 rounded-full bg-surface-container-high flex items-center justify-center">
+<span class="material-symbols-outlined text-sm" data-icon="person">person</span>
+</div>
+<div class="flex flex-col">
+<span class="text-xs font-semibold">User Account</span>
+<span class="text-[10px] text-on-surface-variant">Settings &amp; Preferences</span>
+</div>
+</div>
+</div>
+</aside>
+<!-- Main Content Underlay (Blurred Portfolio View) -->
+<main class="lg:ml-64 min-h-screen p-8 lg:p-12 filter blur-md pointer-events-none opacity-40">
+<header class="mb-12">
+<h2 class="text-3xl font-bold tracking-tight mb-2">Portfolio Overview</h2>
+<p class="text-on-surface-variant">Last updated 12 minutes ago</p>
+</header>
+<div class="grid grid-cols-1 md:grid-cols-3 gap-8 mb-12">
+<div class="bg-surface-container-lowest p-8 rounded-xl border border-outline-variant/40">
+<span class="text-xs font-medium text-on-surface-variant uppercase tracking-wider mb-2 block">Total Value</span>
+<p class="text-2xl font-bold">₹1,24,50,000</p>
+</div>
+<div class="bg-surface-container-lowest p-8 rounded-xl border border-outline-variant/40">
+<span class="text-xs font-medium text-on-surface-variant uppercase tracking-wider mb-2 block">Net Gain</span>
+<p class="text-2xl font-bold text-tertiary">+14.2%</p>
+</div>
+<div class="bg-surface-container-lowest p-8 rounded-xl border border-outline-variant/40">
+<span class="text-xs font-medium text-on-surface-variant uppercase tracking-wider mb-2 block">Active Funds</span>
+<p class="text-2xl font-bold text-primary">12</p>
+</div>
+</div>
+<div class="bg-surface-container-lowest rounded-xl border border-outline-variant/40 overflow-hidden">
+<div class="p-6 border-b border-outline-variant/20 flex justify-between items-center">
+<h3 class="font-bold">Recent Import Activity</h3>
+</div>
+<div class="p-12 flex flex-col items-center justify-center text-center">
+<span class="material-symbols-outlined text-4xl text-outline-variant mb-4" data-icon="upload_file">upload_file</span>
+<p class="text-on-surface-variant text-sm">No recent transactions to display.</p>
+</div>
+</div>
+</main>
+<!-- Modal Overlay -->
+<div class="fixed inset-0 z-50 flex items-center justify-center bg-primary/20 backdrop-blur-sm p-4">
+<!-- Error Screen Modal -->
+<div class="w-full max-w-[420px] bg-surface-container-lowest rounded-xl shadow-[0_10px_30px_rgba(0,0,0,0.08)] border border-outline-variant/30 overflow-hidden transform transition-all">
+<!-- Modal Body -->
+<div class="p-8 md:p-10 text-center">
+<!-- Error Icon -->
+<div class="inline-flex items-center justify-center w-16 h-16 rounded-full bg-error/5 mb-6">
+<span class="material-symbols-outlined text-error text-3xl" data-icon="error">error</span>
+</div>
+<!-- Text Content -->
+<h2 class="text-xl font-bold text-primary tracking-tight mb-3">Import failed</h2>
+<p class="text-sm text-on-surface-variant leading-relaxed px-4">
+                    Incorrect password. Please check your PAN and date of birth format.
+                </p>
+<!-- Detailed Error Info (Recessed Style) -->
+<div class="mt-8 bg-surface-container-low rounded-lg p-4 text-left border border-outline-variant/20">
+<div class="flex items-start gap-3">
+<span class="material-symbols-outlined text-sm text-outline mt-0.5" data-icon="info">info</span>
+<div>
+<p class="text-[11px] font-bold text-on-surface-variant uppercase tracking-wider mb-1">Standard Format Requirement</p>
+<p class="text-xs text-on-surface-variant font-medium">Password for CAS is typically your <span class="text-primary font-bold">PAN</span> (all caps) or <span class="text-primary font-bold">DDMMYYYY</span>.</p>
+</div>
+</div>
+</div>
+</div>
+<!-- Footer Actions -->
+<div class="p-8 pt-0 flex flex-col gap-3">
+<button class="w-full h-12 bg-primary text-surface-container-lowest font-bold text-sm rounded-lg hover:opacity-90 active:scale-[0.98] transition-all">
+                    Try Again
+                </button>
+<button class="w-full h-12 bg-transparent text-primary font-semibold text-sm rounded-lg border border-outline-variant/60 hover:bg-surface-container-low active:scale-[0.98] transition-all">
+                    Cancel
+                </button>
+</div>
+<!-- Footer Meta -->
+<div class="bg-surface-container-low px-8 py-4 flex items-center justify-center gap-2">
+<span class="material-symbols-outlined text-[14px] text-outline" data-icon="lock">lock</span>
+<span class="text-[10px] font-medium text-on-surface-variant tracking-wide">Secure Encryption Protocol 2.4.0</span>
+</div>
+</div>
+</div>
+</body></html>

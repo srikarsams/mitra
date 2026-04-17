@@ -1,0 +1,8 @@
+# macOS
+.DS_Store
+
+# Claude Code local state
+.claude/
+
+# Do not commit any PDF — real CAS statements contain PII (PAN, mobile, transactions)
+*.pdf
