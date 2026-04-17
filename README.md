@@ -88,7 +88,7 @@ apps/mithra/
 
 ## License
 
-No license chosen yet. Treat as "all rights reserved" until a LICENSE file is added.
+[The Unlicense](./LICENSE) — released into the public domain. Do whatever you want with it.
 
 ---
 
