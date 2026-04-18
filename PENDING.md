@@ -8,7 +8,8 @@ Tracking what's deferred from the v1 implementation in `index.html`. Sorted by p
 
 ### Deferred registrars
 - [ ] **KFintech CAS** — different scheme-line layout and section headers. Detection stub already rejects KFintech PDFs with a clear error (`UNSUPPORTED_KFINTECH`). Write a parallel parser branch and route by header keywords (`CAMSCAS` → CAMS, `KFINCAS` / `KFINTECH` → KFintech).
-- [ ] **NSDL eCAS** — completely different tabular format. Most comprehensive of the three (covers CAMS + KFintech in one statement), worth doing well once started. Rejected today with `UNSUPPORTED_NSDL`.
+- [x] **NSDL eCAS** — *shipped in v1.3.0 (blind implementation, MF-only). Routes through `parseDepositoryFromLines` based on the `NSDL Consolidated Account Statement` marker. Parses the Mutual Fund Folios (F) 11-column section; equity (INE…) and bonds (IN9…) silently filtered. Awaiting first real sample for layout verification.*
+- [x] **CDSL eCAS** — *shipped in v1.3.0 (blind implementation, MF-only). Detected via `Central Depository Services (India) Limited` marker. Same parser path as NSDL. Awaiting first real sample for layout verification.*
 
 ### CAMS edge cases not yet validated
 Tested against exactly one real CAMS CAS (`CAS_01042025-17042026_*_unlocked.pdf`). Likely gaps, in rough order of incidence:

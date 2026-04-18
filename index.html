@@ -876,7 +876,7 @@
 // ============================================================
 // App version — bump on each release and shown in Settings + footer.
 // ============================================================
-const APP_VERSION = '1.2.2';
+const APP_VERSION = '1.3.0';
 
 // ============================================================
 // DB (Dexie)
@@ -1274,14 +1274,20 @@ function isinCheckDigitValid(isin) {
 }
 
 // pdf.js emits TextItems with absolute (x, y) in page units and a rendered `width`.
-// We bucket items into y-bands of 3pt, then within a band we re-insert separators
-// based on x-gaps: gaps >= COLUMN_GAP_PT become `\t\t` (column boundary), smaller
-// gaps become a single space. Downstream, tryExtractTxn can split on `\t\t` to
+// We bucket items into y-bands, then within a band re-insert separators based on
+// x-gaps: gaps >= columnGap become `\t\t` (column boundary), smaller gaps
+// become a single space. Downstream, tryExtractTxn can split on `\t\t` to
 // recover columns even when pdf.js has shattered a row across many items.
+//
+// Defaults (yBand=3, columnGap=3) are tuned for CAMS / KFintech CAS. Depository
+// statements (NSDL / CDSL) have looser text baselines — casparser uses a 7pt
+// y-tolerance for those. Callers pass { yBand, columnGap } per format.
 const Y_BAND_PT = 3;
 const COLUMN_GAP_PT = 3;
 
-async function extractLines(pdf) {
+async function extractLines(pdf, opts = {}) {
+  const yBand = opts.yBand ?? Y_BAND_PT;
+  const columnGap = opts.columnGap ?? COLUMN_GAP_PT;
   const rawLines = [];
   for (let i = 1; i <= pdf.numPages; i++) {
     const page = await pdf.getPage(i);
@@ -1294,7 +1300,7 @@ async function extractLines(pdf) {
       const y = it.transform[5];
       let band = null;
       for (const b of bands) {
-        if (Math.abs(b.y - y) <= Y_BAND_PT) { band = b; break; }
+        if (Math.abs(b.y - y) <= yBand) { band = b; break; }
       }
       if (!band) { band = { y, items: [] }; bands.push(band); }
       band.items.push(it);
@@ -1312,7 +1318,7 @@ async function extractLines(pdf) {
           out = it.str;
         } else {
           const gap = x - prevRight;
-          if (gap >= COLUMN_GAP_PT) out += '\t\t' + it.str;
+          if (gap >= columnGap) out += '\t\t' + it.str;
           else if (gap > 0) out += ' ' + it.str;
           else out += it.str;
         }
@@ -1476,6 +1482,18 @@ function tryExtractTxn(line) {
   return null;
 }
 
+// Format detection — scans line text for depository / registrar marker strings.
+// Returns one of 'CAMS' | 'CDSL' | 'NSDL' | 'KFINTECH' | 'UNKNOWN'. Markers
+// are taken from codereverser/casparser's `parse_file_type` in parsers/mupdf.py.
+function detectFormat(lines) {
+  const fullText = lines.map(l => l.text).join(' | ');
+  if (/Central\s+Depository\s+Services\s*\(India\)\s*Limited/i.test(fullText)) return 'CDSL';
+  if (/NSDL\s+Consolidated\s+Account\s+Statement|About\s+NSDL/i.test(fullText)) return 'NSDL';
+  if (/CAMSCAS(?:WS)?|camsonline\.com/i.test(fullText)) return 'CAMS';
+  if (/KFINCAS|KFINTECH\s+Consolidated|WWW\.KFINTECH\.COM|mfs\.kfintech\.com/i.test(fullText)) return 'KFINTECH';
+  return 'UNKNOWN';
+}
+
 async function parseCAS(file, password) {
   const pdfjsLib = await loadPdfJs();
   const ab = await file.arrayBuffer();
@@ -1493,30 +1511,55 @@ async function parseCAS(file, password) {
     throw Object.assign(new Error(e?.message || 'Could not open PDF.'), { code: 'PDF_ERROR' });
   }
 
-  const lines = await extractLines(pdf);
-  return parseCASFromLines(lines, pdf.numPages);
+  // Probe extraction with CAMS-tuned bands (3pt). Format markers are plain text
+  // so detection is robust regardless of extraction tolerances.
+  const probe = await extractLines(pdf);
+  const format = detectFormat(probe);
+
+  if (format === 'KFINTECH') {
+    throw Object.assign(
+      new Error('KFintech statements are not supported yet. CAMS, CDSL, and NSDL are supported.'),
+      { code: 'UNSUPPORTED_KFINTECH' }
+    );
+  }
+  if (format === 'UNKNOWN') {
+    throw Object.assign(
+      new Error('This does not look like a supported statement. Mitra supports CAMS, CDSL, and NSDL CAS PDFs.'),
+      { code: 'UNSUPPORTED_FORMAT' }
+    );
+  }
+  if (format === 'CAMS') return parseCAMSFromLines(probe, pdf.numPages);
+  // Depository (CDSL / NSDL). These PDFs use looser baselines — re-extract
+  // with a 7pt y-band per casparser's tolerance table.
+  const lines = await extractLines(pdf, { yBand: 7, columnGap: 4 });
+  return parseDepositoryFromLines(lines, format, pdf.numPages);
+}
+
+// Dispatch wrapper — used by the fixture harness and diagnostic-replay tests
+// that feed pre-extracted lines. Routes by detected format so callers don't
+// need to know which parser backs each PDF type.
+function parseCASFromLines(lines, pageCount) {
+  const format = detectFormat(lines);
+  if (format === 'CAMS') return parseCAMSFromLines(lines, pageCount);
+  if (format === 'CDSL' || format === 'NSDL') return parseDepositoryFromLines(lines, format, pageCount);
+  if (format === 'KFINTECH') {
+    throw Object.assign(new Error('KFintech not supported'), { code: 'UNSUPPORTED_KFINTECH' });
+  }
+  throw Object.assign(new Error('Unrecognised statement format'), { code: 'UNSUPPORTED_FORMAT' });
 }
 
 // Pure function — takes pre-extracted lines and runs the full CAMS classifier.
 // Exposed so the fixture harness can feed hand-written line arrays without a PDF.
-function parseCASFromLines(lines, pageCount) {
+function parseCAMSFromLines(lines, pageCount) {
   pageCount = pageCount || 1;
-
-  // Detect format. v1 only supports CAMS CAS — reject KFintech / NSDL clearly.
-  // Scan all lines: the CAMSCAS marker sits in the per-page footer, which can
-  // appear well beyond the first screen of text.
   const fullText = lines.map(l => l.text).join(' | ');
-  const isCams = /CAMSCAS(?:WS)?|camsonline\.com/i.test(fullText);
-  const mentionsKfin = /KFINCAS|KFINTECH\s+Consolidated|WWW\.KFINTECH\.COM|mfs\.kfintech\.com/i.test(fullText);
-  const mentionsNsdl = /\bNSDL\b.*e-?CAS|NSDL\s+Consolidated|nsdl\.co\.in.*cas/i.test(fullText);
-  if (!isCams) {
-    if (mentionsKfin) {
-      throw Object.assign(new Error('KFintech statements are not supported yet. Please import a CAMS CAS.'), { code: 'UNSUPPORTED_KFINTECH' });
-    }
-    if (mentionsNsdl) {
-      throw Object.assign(new Error('NSDL eCAS is not supported yet. Please import a CAMS CAS.'), { code: 'UNSUPPORTED_NSDL' });
-    }
-    throw Object.assign(new Error('This does not look like a CAMS CAS. Only CAMS statements are supported in v1.'), { code: 'UNSUPPORTED_FORMAT' });
+
+  // Sanity-check: reject files that don't look like CAMS CAS before doing
+  // CAMS-specific parsing. This is a defensive backstop — the main router in
+  // parseCAS() already handled format dispatch, but tests may call this
+  // function directly with fixture lines.
+  if (!/CAMSCAS(?:WS)?|camsonline\.com/i.test(fullText)) {
+    throw Object.assign(new Error('Not a CAMS CAS.'), { code: 'UNSUPPORTED_FORMAT' });
   }
 
   // Summary vs Detailed CAS — only Detailed contains the transaction history
@@ -1829,6 +1872,228 @@ function parseCASFromLines(lines, pageCount) {
 }
 
 // ============================================================
+// depository CAS parser (CDSL / NSDL) — mutual funds only
+// ============================================================
+// Depository statements don't have transactions, just holdings snapshots. The
+// load-bearing anchor is the "Mutual Fund Folios (F)" section, an 11-column
+// table with ISIN | UCC | Scheme | Folio | Units | AvgCost | TotalCost | NAV |
+// Value | PnL | Return. We parse that section only; equities (INE... ISINs)
+// and bonds (IN9...) are silently dropped.
+//
+// Regex grammar is ported from codereverser/casparser:
+//   https://github.com/codereverser/casparser/blob/main/casparser/process/regex.py
+//
+// NOTE: implemented blind — no real PDF has been validated. First real file
+// will likely expose layout differences. The diagnostic-export flow is the
+// fixture-capture path for iteration.
+function parseDepositoryFromLines(lines, format, pageCount) {
+  pageCount = pageCount || 1;
+  const fullText = lines.map(l => l.text).join(' | ');
+  const warnings = [];
+  const markersSeen = new Set();
+  if (format === 'CDSL') markersSeen.add('Central Depository Services');
+  if (format === 'NSDL') markersSeen.add('NSDL Consolidated Account Statement');
+
+  const panRe = /\b([A-Z]{5}\d{4}[A-Z])\b/;
+  // Investor name usually appears right after "ACCOUNT HOLDER" / "Name(s) of Account Holder"
+  const acctHolderRe = /ACCOUNT\s+HOLDER/i;
+  // DP Id / Client Id appear in the demat account header.
+  const demataRe = /(NSDL|CDSL)\s+demat\s+account.*?DP\s*Id\s*:\s*(\S+).*?Client\s*Id\s*:\s*(\S+)/i;
+  // Start of the MF-Folios (F) section.
+  const mfSectionRe = /Mutual\s+Fund\s+Folios\s*\(?\s*F\s*\)?/i;
+  // Indian MF ISIN prefix: INF. Equity = INE, other = IN9 / etc.
+  const MF_ISIN_RE = /(INF(?:\s*[A-Z0-9]){8}\s*\d)/;
+  const ISIN_ANY_RE = /(IN[E9F](?:\s*[A-Z0-9]){8}\s*\d)/;
+
+  let pan = '';
+  let investorName = '';
+  let dpId = '';
+  let clientId = '';
+  let inMfSection = false;
+  let rowsClassified = 0;
+  let rowsUnknown = 0;
+  const funds = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const text = lines[i].text;
+
+    if (!pan) {
+      const pm = panRe.exec(text);
+      if (pm) pan = pm[1];
+    }
+
+    // Pick up investor name heuristically: the first "Name-like" line after
+    // an ACCOUNT HOLDER header. We accept more permissive patterns than CAMS
+    // because joint holders, titled names, and typos are common.
+    if (!investorName && acctHolderRe.test(text)) {
+      for (let j = 1; j <= 4 && i + j < lines.length; j++) {
+        const cand = lines[i + j].text.replace(/\t\t/g, ' ').trim();
+        // A reasonable name: 2-5 words, starts with an uppercase letter,
+        // no digits. Strip trailing "(PAN: ...)" if present.
+        const noPan = cand.replace(/\s*\(PAN:[^)]*\)\s*$/i, '').trim();
+        if (/^[A-Z][A-Za-z.'\s]{2,50}$/.test(noPan) && /[A-Za-z]\s+[A-Za-z]/.test(noPan)) {
+          investorName = toTitleCase(noPan);
+          break;
+        }
+      }
+    }
+
+    const demat = demataRe.exec(text);
+    if (demat) {
+      dpId = dpId || demat[2];
+      clientId = clientId || demat[3];
+      markersSeen.add('DP/Client header');
+    }
+
+    if (mfSectionRe.test(text)) {
+      inMfSection = true;
+      markersSeen.add('MF Folios (F)');
+      continue;
+    }
+
+    if (!inMfSection) continue;
+
+    // Once inside the MF-Folios section, try to parse each line as a holding.
+    // Format (per casparser NSDL_MF_HOLDINGS_RE):
+    //   ISIN  UCC/Code  SchemeName  FolioNo  Units  AvgCost  TotalCost  NAV  Value  PnL  Return
+    // Skip header rows and any rows without a recognisable ISIN.
+    const isinAny = ISIN_ANY_RE.exec(text);
+    if (!isinAny) continue;
+    const isinRaw = isinAny[1].replace(/\s+/g, '');
+    if (!isinCheckDigitValid(isinRaw)) continue;
+    // MF only. Equity (INE) and other (IN9) are silently skipped.
+    if (!isinRaw.startsWith('INF')) continue;
+
+    // Split on \t\t columns. Standard MF-Folios layout has 11 columns:
+    //   0 ISIN | 1 UCC | 2 Scheme | 3 Folio | 4 Units | 5 AvgCost |
+    //   6 TotalCost | 7 NAV | 8 Value | 9 PnL | 10 Return
+    // We index directly when we have >= 9 columns (NAV + Value may round out
+    // the tail even if PnL/Return are missing). If fewer, fall back to a peel
+    // of trailing numerics from whatever single-column text block was produced.
+    const rawCols = text.split(/\t\t/).map(c => c.replace(/[ \t]+/g, ' ').trim()).filter(Boolean);
+
+    let units, totalCost, nav, value, folio = '', schemeName = '';
+    if (rawCols.length >= 9) {
+      units = parseCasNum(rawCols[4]);
+      totalCost = parseCasNum(rawCols[6]);
+      nav = parseCasNum(rawCols[7]);
+      value = parseCasNum(rawCols[8]);
+      folio = rawCols[3];
+      schemeName = rawCols[2];
+    } else {
+      // Fused-column fallback. Peel trailing numbers from a single text cell.
+      let numTail = [];
+      let textEnd = rawCols.length;
+      for (let k = rawCols.length - 1; k >= 0; k--) {
+        if (NUM_TOK.test(rawCols[k])) { numTail.unshift(parseCasNum(rawCols[k])); textEnd = k; }
+        else break;
+      }
+      const PEEL_TAIL_RE = /^([\s\S]*?)((?:\s(?:-?\(?[\d,]+(?:\.\d+)?\)?\*?)){1,8})\s*$/;
+      for (let safety = 0; safety < 8 && textEnd > 0; safety++) {
+        const lastText = rawCols[textEnd - 1];
+        if (!lastText) { rawCols.splice(textEnd - 1, 1); textEnd--; continue; }
+        if (NUM_TOK.test(lastText)) {
+          numTail.unshift(parseCasNum(lastText));
+          rawCols.splice(textEnd - 1, 1);
+          textEnd--;
+          continue;
+        }
+        const mm = PEEL_TAIL_RE.exec(lastText);
+        if (!mm || !mm[2].trim()) break;
+        const extras = mm[2].trim().split(/\s+/).map(parseCasNum);
+        const pre = mm[1].trim();
+        numTail = [...extras, ...numTail];
+        if (!pre) { rawCols.splice(textEnd - 1, 1); textEnd--; }
+        else rawCols[textEnd - 1] = pre;
+      }
+      // Expect at least: folio, units, avgCost, totalCost, nav, value = 6 nums.
+      // The first numeric in the tail is typically the folio number.
+      if (numTail.length < 6) { rowsUnknown++; continue; }
+      folio = String(numTail[0]);
+      units = numTail[1];
+      totalCost = numTail[3];
+      nav = numTail[4];
+      value = numTail[5];
+      let descText = rawCols.slice(0, textEnd).join(' | ').replace(isinAny[1], '').trim();
+      // Remove a leading UCC code if present.
+      descText = descText.replace(/^\s*[\w\/\-]{1,10}\s*\|\s*/, '').trim();
+      schemeName = descText.replace(/\s*\|\s*/g, ' ').replace(/\s{2,}/g, ' ').trim();
+    }
+
+    if (!schemeName) { rowsUnknown++; continue; }
+
+    // Derive AMC from scheme name: first token stream up to "Mutual Fund" or
+    // known AMC keyword, else first 2 words.
+    let amc = '';
+    const amcM = /^([A-Z][A-Za-z0-9 &().'-]+?)\s+(?:Mutual\s+Fund|Fund\b)/i.exec(schemeName);
+    if (amcM) amc = amcM[1].trim();
+    else amc = schemeName.split(/\s+/).slice(0, 2).join(' ');
+
+    funds.push({
+      folioNumber: folio.replace(/\s+/g, '').trim(),
+      amc,
+      schemeName,
+      isin: isinRaw,
+      category: '',
+      transactions: [],
+      openingBalance: 0,
+      closingBalance: units,
+      costValue: totalCost,
+      marketValue: value,
+      casNav: nav,
+      casNavDate: null,
+      totalUnits: units,
+      totalInvested: totalCost,
+      investedSource: 'summary',
+      unitsSource: 'summary',
+    });
+    rowsClassified++;
+  }
+
+  // Consolidate across multiple folios under same ISIN (same logic as CAMS).
+  const byKey = new Map();
+  for (const f of funds) {
+    const key = f.isin || f.schemeName.toLowerCase();
+    if (!byKey.has(key)) {
+      byKey.set(key, { ...f, folios: [f.folioNumber], transactions: [...f.transactions] });
+    } else {
+      const agg = byKey.get(key);
+      agg.folios.push(f.folioNumber);
+      agg.totalUnits += f.totalUnits;
+      agg.totalInvested += f.totalInvested;
+      if (f.marketValue != null) agg.marketValue = (agg.marketValue || 0) + f.marketValue;
+    }
+  }
+  const merged = [...byKey.values()];
+
+  if (!merged.length) {
+    warnings.push('No mutual-fund holdings found in this depository CAS. If this file has MF holdings, please export the diagnostic so we can add support.');
+  }
+
+  const parseMetadata = {
+    version: format === 'CDSL' ? 'CDSL-EDEMAT' : 'NSDL-EDEMAT',
+    markersSeen: [...markersSeen].sort(),
+    rowsClassified,
+    rowsUnknown,
+    lineCount: lines.length,
+    pageCount,
+    fundCount: merged.length,
+    dpId: dpId || null,
+    clientId: clientId || null,
+    parsedAt: new Date().toISOString(),
+  };
+
+  return {
+    investorName,
+    pan,
+    funds: merged,
+    warnings,
+    parseMetadata,
+    rawLines: lines,
+  };
+}
+
+// ============================================================
 // diagnostic export — sanitized parse artifact
 // ============================================================
 // Produces a JSON blob with PAN / folio / investor-name redacted but keeps
@@ -1837,6 +2102,8 @@ function buildDiagnostic(parseResult) {
   if (!parseResult) return null;
   const pan = parseResult.pan || '';
   const name = parseResult.investorName || '';
+  const dpId = parseResult.parseMetadata?.dpId || '';
+  const clientId = parseResult.parseMetadata?.clientId || '';
   const folios = new Set();
   for (const f of parseResult.funds || []) {
     if (f.folioNumber) folios.add(f.folioNumber);
@@ -1868,6 +2135,8 @@ function buildDiagnostic(parseResult) {
       t = t.split(name).join('REDACTED');
       t = t.split(name.toUpperCase()).join('REDACTED');
     }
+    if (dpId) t = t.split(dpId).join('IN300000');
+    if (clientId) t = t.split(clientId).join('00000000');
     // Folios are stored with whitespace stripped (e.g. "10786967/45"), but the
     // raw line text preserves surrounding spaces ("10786967 / 45"). Build a
     // regex that tolerates whitespace around `/` and `-` so the match lands.
@@ -1886,16 +2155,23 @@ function buildDiagnostic(parseResult) {
     return t;
   };
   // Drop the investor header block (address, email, mobile) that sits above
-  // "PORTFOLIO SUMMARY". The parser doesn't need it for fund detection (folios
-  // come later), and it's the densest PII section in a CAS.
+  // the first interesting section marker. For CAMS that's "PORTFOLIO SUMMARY";
+  // for depository CAS it's "ACCOUNT HOLDER" / the first demat-header line.
   const rawLines = parseResult.rawLines || [];
   let startIdx = 0;
   for (let i = 0; i < rawLines.length; i++) {
-    if (/PORTFOLIO\s+SUMMARY/i.test(rawLines[i].text)) { startIdx = i; break; }
+    if (/PORTFOLIO\s+SUMMARY|ACCOUNT\s+HOLDER|(?:NSDL|CDSL)\s+demat\s+account/i.test(rawLines[i].text)) {
+      startIdx = i;
+      break;
+    }
   }
+  // Strip DP/Client Id from parseMetadata before export so the diagnostic
+  // doesn't leak demat account identifiers.
+  const pm = parseResult.parseMetadata ? { ...parseResult.parseMetadata } : null;
+  if (pm) { delete pm.dpId; delete pm.clientId; }
   return {
-    version: parseResult.parseMetadata?.version,
-    parseMetadata: parseResult.parseMetadata,
+    version: pm?.version,
+    parseMetadata: pm,
     warnings: parseResult.warnings || [],
     funds: (parseResult.funds || []).map(f => ({
       amc: f.amc,
@@ -2150,6 +2426,77 @@ function runParserFixtures() {
         throw new Error('scheme name did not include "Parag Parikh": ' + JSON.stringify(f.schemeName));
       }
       if (f.totalInvested !== 10000) throw new Error('expected totalInvested=10000, got ' + f.totalInvested);
+    },
+  });
+
+  // Fixture 8 — CDSL eCAS with MF folios only. Verifies format routing + the
+  // 11-column MF-Folios (F) parser. Synthetic — no real PDF has been seen.
+  fixtures.push({
+    name: 'CDSL-EDEMAT-mf-only',
+    lines: [
+      _mkLine(1, 800, 'Central Depository Services (India) Limited'),
+      _mkLine(1, 780, 'Consolidated Account Statement'),
+      _mkLine(1, 770, 'ACCOUNT HOLDER'),
+      _mkLine(1, 760, 'Test Investor (PAN: ABCDE1234F)'),
+      _mkLine(1, 745, 'CDSL demat account\t\tDP Id: 12045678\t\tClient Id: 87654321'),
+      _mkLine(1, 700, 'Mutual Fund Folios (F)'),
+      _mkLine(1, 680, 'INF846K01EW2\t\tAX123\t\tAxis Bluechip Fund Direct Growth\t\t12345678\t\t100.500\t\t49.75\t\t5,000.00\t\t55.00\t\t5,527.50\t\t527.50\t\t10.55'),
+      _mkLine(1, 665, 'INF879O01027\t\tPPF001\t\tParag Parikh Flexi Cap Direct\t\t99999999\t\t200.000\t\t75.00\t\t15,000.00\t\t85.00\t\t17,000.00\t\t2,000.00\t\t13.33'),
+    ],
+    expect: (res) => {
+      if (res.parseMetadata?.version !== 'CDSL-EDEMAT') throw new Error('expected version=CDSL-EDEMAT, got ' + res.parseMetadata?.version);
+      if (res.funds.length !== 2) throw new Error('expected 2 funds, got ' + res.funds.length);
+      const axis = res.funds.find(f => f.isin === 'INF846K01EW2');
+      if (!axis) throw new Error('missing Axis fund');
+      if (axis.totalInvested !== 5000) throw new Error('expected Axis totalInvested=5000, got ' + axis.totalInvested);
+      if (Math.abs(axis.totalUnits - 100.5) > 0.001) throw new Error('expected Axis units=100.5, got ' + axis.totalUnits);
+      const ppfas = res.funds.find(f => f.isin === 'INF879O01027');
+      if (!ppfas) throw new Error('missing PPFAS fund');
+      if (ppfas.totalInvested !== 15000) throw new Error('expected PPFAS totalInvested=15000, got ' + ppfas.totalInvested);
+    },
+  });
+
+  // Fixture 9 — CDSL with mixed holdings (MF + equity + bond). Only the MF
+  // row (INF… ISIN) should make it through. Equity (INE…) and bond (IN9…)
+  // are silently dropped.
+  fixtures.push({
+    name: 'CDSL-EDEMAT-mixed-holdings',
+    lines: [
+      _mkLine(1, 800, 'Central Depository Services (India) Limited'),
+      _mkLine(1, 770, 'ACCOUNT HOLDER'),
+      _mkLine(1, 760, 'Test Investor (PAN: ABCDE1234F)'),
+      _mkLine(1, 700, 'Mutual Fund Folios (F)'),
+      _mkLine(1, 680, 'INF109K012B0\t\tICI001\t\tICICI Pru Balanced Advantage Direct\t\t11111111\t\t1000.000\t\t80.00\t\t80,000.00\t\t86.00\t\t86,000.00\t\t6,000.00\t\t7.50'),
+      _mkLine(1, 665, 'INE009A01021\t\tINFOSYS\t\tINFOSYS LTD EQUITY\t\t22222222\t\t50.000\t\t1200.00\t\t60,000.00\t\t1400.00\t\t70,000.00\t\t10,000.00\t\t16.67'),
+      _mkLine(1, 650, 'IN9002A01XX1\t\tBOND01\t\tGOVT BOND 2026\t\t33333333\t\t100.000\t\t1000.00\t\t100,000.00\t\t1010.00\t\t101,000.00\t\t1,000.00\t\t1.00'),
+    ],
+    expect: (res) => {
+      if (res.funds.length !== 1) throw new Error('expected 1 MF fund (equity and bond filtered), got ' + res.funds.length);
+      const f = res.funds[0];
+      if (f.isin !== 'INF109K012B0') throw new Error('expected MF ISIN kept, got ' + f.isin);
+      if (f.totalInvested !== 80000) throw new Error('expected totalInvested=80000, got ' + f.totalInvested);
+    },
+  });
+
+  // Fixture 10 — NSDL-flavoured MF-Folios section. Same shape as CDSL, just
+  // a different format marker. Verifies the router routes NSDL correctly.
+  fixtures.push({
+    name: 'NSDL-EDEMAT-mf-folios',
+    lines: [
+      _mkLine(1, 800, 'NSDL Consolidated Account Statement'),
+      _mkLine(1, 780, 'About NSDL'),
+      _mkLine(1, 770, 'ACCOUNT HOLDER'),
+      _mkLine(1, 760, 'Test Investor (PAN: ABCDE1234F)'),
+      _mkLine(1, 745, 'NSDL demat account\t\tDP Id: IN300095\t\tClient Id: 12345678'),
+      _mkLine(1, 700, 'Mutual Fund Folios (F)'),
+      _mkLine(1, 680, 'INF204K01XZ7\t\tNIP001\t\tNippon India Arbitrage Direct Growth\t\t77777777\t\t5000.000\t\t20.00\t\t1,00,000.00\t\t22.00\t\t1,10,000.00\t\t10,000.00\t\t10.00'),
+    ],
+    expect: (res) => {
+      if (res.parseMetadata?.version !== 'NSDL-EDEMAT') throw new Error('expected version=NSDL-EDEMAT, got ' + res.parseMetadata?.version);
+      if (res.funds.length !== 1) throw new Error('expected 1 fund, got ' + res.funds.length);
+      const f = res.funds[0];
+      if (f.isin !== 'INF204K01XZ7') throw new Error('expected ISIN=INF204K01XZ7, got ' + f.isin);
+      if (f.totalInvested !== 100000) throw new Error('expected totalInvested=100000, got ' + f.totalInvested);
     },
   });
 
