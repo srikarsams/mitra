@@ -687,6 +687,17 @@
             Your data is stored in this browser. Clearing browser data will erase your portfolio. Re-import your CAS to restore.
           </p>
         </div>
+        <button
+          type="button"
+          x-show="hasDiagnostic"
+          @click="showExportConfirm = true"
+          class="mt-3 w-full flex items-center justify-between gap-4 px-5 py-4 bg-surface-container-lowest rounded-xl border border-outline-variant/40 hover:bg-surface-container-low transition-colors text-left">
+          <div class="min-w-0">
+            <p class="text-[13px] font-semibold text-primary">Export Diagnostic</p>
+            <p class="text-[11px] text-outline uppercase tracking-wider">Sanitised JSON of last parse — helps debug parser issues</p>
+          </div>
+          <span class="material-symbols-outlined text-outline">download</span>
+        </button>
       </section>
     </div>
   </main>
@@ -788,6 +799,24 @@
   </div>
 </div>
 
+<!-- Export diagnostic confirmation -->
+<div x-show="showExportConfirm" x-transition.opacity @click.self="showExportConfirm = false"
+     class="fixed inset-0 z-[70] bg-black/30 flex items-center justify-center px-4">
+  <div class="w-full max-w-sm bg-surface-container-lowest rounded-xl border border-outline-variant/40 shadow-[0_10px_30px_rgba(0,0,0,0.12)] p-6 text-center">
+    <div class="w-12 h-12 rounded-full bg-surface-container mx-auto flex items-center justify-center mb-4">
+      <span class="material-symbols-outlined text-primary">download</span>
+    </div>
+    <h2 class="text-[17px] font-semibold text-primary mb-2">Export parse diagnostic?</h2>
+    <p class="text-[13px] text-on-surface-variant mb-6 leading-relaxed">Downloads a JSON file describing how your last statement was parsed. Your PAN, folio numbers, and name are redacted before download; scheme names and amounts are kept. Useful for debugging parser issues — share it with the developer if something looks wrong.</p>
+    <div class="flex gap-3">
+      <button @click="showExportConfirm = false"
+              class="flex-1 border border-outline-variant text-primary py-3 rounded-lg font-semibold text-[14px] hover:bg-surface-container transition-colors">Cancel</button>
+      <button @click="confirmExportDiagnostic()"
+              class="flex-1 bg-primary text-white py-3 rounded-lg font-semibold text-[14px] hover:opacity-90 active:scale-[0.98] transition-all">Download</button>
+    </div>
+  </div>
+</div>
+
 <!-- Forgot PIN confirmation -->
 <div x-show="showForgotPinConfirm" x-transition.opacity @click.self="showForgotPinConfirm = false"
      class="fixed inset-0 z-[80] bg-black/30 flex items-center justify-center px-4">
@@ -847,7 +876,7 @@
 // ============================================================
 // App version — bump on each release and shown in Settings + footer.
 // ============================================================
-const APP_VERSION = '1.1.0';
+const APP_VERSION = '1.2.0';
 
 // ============================================================
 // DB (Dexie)
@@ -1160,24 +1189,34 @@ function parseCasDate(d) {
   return `${m[3]}-${String(mi + 1).padStart(2, '0')}-${m[1].padStart(2, '0')}`;
 }
 
+// Dividend row grammar — captures the per-unit rate and whether it's reinvested.
+// Pattern derived from codereverser/casparser (process/regex.py).
+const DIVIDEND_RE = /(div\.?|dividend|idcw)\b.*?(?:@\s*(?:rs\.?|₹|inr)?\s*([\d.]+))?/i;
+
 function classifyTxn(desc) {
   const d = (desc || '').toLowerCase();
+  // Reversals come first — a rejected SIP / dishonoured cheque must not be
+  // treated as a purchase even though the description contains "purchase".
+  if (/reversal|rejection|dishonou?red|mismatch|insufficient\s*balance/.test(d)) return 'REVERSAL';
   if (/stamp\s*duty/.test(d)) return 'STAMP_DUTY';
-  if (/stt\s*paid/.test(d)) return 'TAX';
-  if (/switch\s*out|switch-out/.test(d)) return 'SWITCH_OUT';
-  if (/switch\s*in|switch-in/.test(d)) return 'SWITCH_IN';
-  if (/systematic\s*withdrawal|swp/.test(d)) return 'REDEMPTION';
-  if (/systematic\s*transfer|stp\s*out/.test(d)) return 'SWITCH_OUT';
-  if (/stp\s*in/.test(d)) return 'SWITCH_IN';
-  if (/systematic\s*investment/.test(d)) return 'SIP';
-  if (/systematic\s*purchase/.test(d)) return 'SIP';
-  if (/\bsip\b/.test(d) && /purchase/.test(d)) return 'SIP';
+  if (/\bstt\b|securities\s*transaction\s*tax/.test(d)) return 'TAX';
+  if (/\btds\b|tax\s*deducted/.test(d)) return 'TAX';
+  if (/switch\s*out|switch-out|merger.*out/.test(d)) return 'SWITCH_OUT';
+  if (/switch\s*in|switch-in|merger.*in/.test(d)) return 'SWITCH_IN';
+  if (/systematic\s*withdrawal|\bswp\b/.test(d)) return 'REDEMPTION';
+  if (/systematic\s*transfer|\bstp\s*out/.test(d)) return 'SWITCH_OUT';
+  if (/\bstp\s*in/.test(d)) return 'SWITCH_IN';
+  // casparser SIP grammar: "systematic", "instal(l)ment", "sys.*invest"
+  if (/systematic\s*(investment|purchase)/.test(d)) return 'SIP';
+  if (/instal+ment/.test(d)) return 'SIP';
+  if (/sys\.?\s*invest/.test(d)) return 'SIP';
   if (/\bsip\b/.test(d)) return 'SIP';
   if (/redemption|redeem/.test(d)) return 'REDEMPTION';
-  if (/dividend.*reinvest/.test(d)) return 'DIVIDEND_REINVEST';
-  if (/dividend.*payout|idcw.*payout/.test(d)) return 'DIVIDEND_PAYOUT';
-  if (/\bpurchase\b/.test(d)) return 'PURCHASE';
-  if (/allot/.test(d)) return 'PURCHASE';
+  // Dividend: reinvest explicitly beats payout; IDCW is the modern AMFI term.
+  if (/(div\.?|dividend|idcw).*reinvest/.test(d)) return 'DIVIDEND_REINVEST';
+  if (/(div\.?|dividend|idcw)/.test(d)) return 'DIVIDEND_PAYOUT';
+  if (/segregated|side\s*pocket/.test(d)) return 'SEGREGATED';
+  if (/\bpurchase\b|allot/.test(d)) return 'PURCHASE';
   return 'OTHER';
 }
 
@@ -1204,99 +1243,226 @@ function cleanSchemeName(raw) {
 const ISIN_TOLERANT_RE = /ISIN\s*:?\s*((?:[A-Z](?:\s*[A-Z0-9]){11}))(?![A-Z0-9])/i;
 const SCHEME_CODE_RE = /^\s*[A-Z0-9](?:\s*[A-Z0-9]){0,9}\s*-\s*/;
 
+// ISO 6166 check-digit for ISIN. Guards against false positives where the
+// letters "ISIN" appear in prose followed by 12 plausible chars.
+function isinCheckDigitValid(isin) {
+  if (!/^[A-Z]{2}[A-Z0-9]{9}\d$/.test(isin)) return false;
+  let digits = '';
+  for (const c of isin.slice(0, -1)) {
+    digits += /[0-9]/.test(c) ? c : (c.charCodeAt(0) - 55).toString();
+  }
+  let sum = 0;
+  const rev = digits.split('').reverse();
+  for (let i = 0; i < rev.length; i++) {
+    let d = parseInt(rev[i], 10);
+    if (i % 2 === 0) { d *= 2; if (d > 9) d -= 9; }
+    sum += d;
+  }
+  const expected = (10 - (sum % 10)) % 10;
+  return expected === parseInt(isin.slice(-1), 10);
+}
+
+// pdf.js emits TextItems with absolute (x, y) in page units and a rendered `width`.
+// We bucket items into y-bands of 3pt, then within a band we re-insert separators
+// based on x-gaps: gaps >= COLUMN_GAP_PT become `\t\t` (column boundary), smaller
+// gaps become a single space. Downstream, tryExtractTxn can split on `\t\t` to
+// recover columns even when pdf.js has shattered a row across many items.
+const Y_BAND_PT = 3;
+const COLUMN_GAP_PT = 3;
+
 async function extractLines(pdf) {
   const rawLines = [];
   for (let i = 1; i <= pdf.numPages; i++) {
     const page = await pdf.getPage(i);
     const content = await page.getTextContent();
-    // Sort items by y descending (top-first), then group items within ~4px into one line.
-    const items = content.items.filter(it => it.str && it.transform).slice();
-    items.sort((a, b) => {
-      const dy = b.transform[5] - a.transform[5];
-      if (Math.abs(dy) > 3) return dy;
-      return a.transform[4] - b.transform[4];
-    });
-    let group = null;
+    const items = content.items.filter(it => it.str && it.transform);
+    if (!items.length) continue;
+    // Bucket into y-bands.
+    const bands = [];
     for (const it of items) {
       const y = it.transform[5];
-      if (!group || Math.abs(group.y - y) > 3) {
-        if (group) {
-          group.items.sort((a, b) => a.transform[4] - b.transform[4]);
-          const text = group.items.map(g => g.str).join(' ').replace(/\s+/g, ' ').trim();
-          if (text) rawLines.push({ page: i, y: group.y, text });
+      let band = null;
+      for (const b of bands) {
+        if (Math.abs(b.y - y) <= Y_BAND_PT) { band = b; break; }
+      }
+      if (!band) { band = { y, items: [] }; bands.push(band); }
+      band.items.push(it);
+    }
+    // Sort bands top-down (descending y).
+    bands.sort((a, b) => b.y - a.y);
+    for (const band of bands) {
+      band.items.sort((a, b) => a.transform[4] - b.transform[4]);
+      let out = '';
+      let prevRight = null;
+      for (const it of band.items) {
+        const x = it.transform[4];
+        const w = it.width || 0;
+        if (prevRight == null) {
+          out = it.str;
+        } else {
+          const gap = x - prevRight;
+          if (gap >= COLUMN_GAP_PT) out += '\t\t' + it.str;
+          else if (gap > 0) out += ' ' + it.str;
+          else out += it.str;
         }
-        group = { y, items: [it] };
-      } else {
-        group.items.push(it);
+        prevRight = x + w;
       }
-    }
-    if (group) {
-      group.items.sort((a, b) => a.transform[4] - b.transform[4]);
-      const text = group.items.map(g => g.str).join(' ').replace(/\s+/g, ' ').trim();
-      if (text) rawLines.push({ page: i, y: group.y, text });
+      // Normalize: collapse tab clusters (possibly wrapped by spaces) → \t\t;
+      // collapse multi-spaces → single space. Preserve \t\t as column boundary.
+      const text = out
+        .replace(/[ \t]*\t+[ \t]*/g, '\t\t')
+        .replace(/ {2,}/g, ' ')
+        .trim();
+      if (text) rawLines.push({ page: i, y: band.y, text });
     }
   }
-  // Merge orphan numeric lines onto neighbouring transaction rows.
-  // pdf.js sometimes emits the "balance" column on its own y-bucket.
-  return mergeOrphanNumbers(rawLines);
+  return rawLines;
 }
 
-function mergeOrphanNumbers(lines) {
-  const DATE_PREFIX = /^\d{1,2}-[A-Za-z]{3}-\d{4}\b/;
-  const ORPHAN_NUM = /^-?\(?-?[\d,]+(?:\.\d+)?\)?\*?$/;
-  const out = [];
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    const t = line.text.trim();
-    if (ORPHAN_NUM.test(t)) {
-      // Prefer attaching to the NEXT non-empty line if it's an unfinished transaction.
-      let nextIdx = -1;
-      for (let j = i + 1; j < lines.length; j++) {
-        if (lines[j].text.trim()) { nextIdx = j; break; }
-      }
-      const next = nextIdx >= 0 ? lines[nextIdx] : null;
-      if (next && DATE_PREFIX.test(next.text.trim()) && countTrailingNumbers(next.text) < 4) {
-        lines[nextIdx] = { ...next, text: next.text + ' ' + t };
-        continue;
-      }
-      const prev = out[out.length - 1];
-      if (prev && DATE_PREFIX.test(prev.text) && countTrailingNumbers(prev.text) < 4) {
-        prev.text = prev.text + ' ' + t;
-        continue;
-      }
-      // Orphan number with no clear home — drop it.
-      continue;
-    }
-    out.push(line);
-  }
-  return out;
-}
-
-function countTrailingNumbers(text) {
-  // Count trailing space-separated numeric tokens (handles parens, commas, decimals).
-  const m = text.match(/(?:\s(?:-?\(?-?[\d,]+(?:\.\d+)?\)?))+\s*\*?\s*$/);
-  if (!m) return 0;
-  return m[0].trim().split(/\s+/).length;
-}
+// Transaction row shapes — ported from codereverser/casparser TRANSACTION_RE{1..4}.
+//   Shape 4: desc  amount  units  nav  balance   (normal purchase / redemption / SIP)
+//   Shape 3: desc  amount         nav  balance   (dividend payout — units unchanged)
+//   Shape 2: desc  amount              balance   (segregated portfolio / side-pocket)
+//   Shape 1: desc  amount                        (tax row: STT, stamp duty, TDS)
+// Primary path uses \t\t column separators from extractLines.
+// Fallback path uses trailing-number regexes for lines where the PDF gave us no gaps.
+const NUM_TOK = /^-?\(?-?[\d,]+(?:\.\d+)?\)?\*?$/;
 
 function tryExtractTxn(line) {
   const txt = line.text;
-  // Must start with date
-  const dateM = /^(\d{1,2}-[A-Za-z]{3}-\d{4})\s+(.*)$/.exec(txt);
+  const dateM = /^(\d{1,2}-[A-Za-z]{3}-\d{4})(?:\s+|\t\t)([\s\S]*)$/.exec(txt);
   if (!dateM) return null;
-  const [, date, rest] = dateM;
-  // Capture trailing numbers. A CAMS transaction row ends with 4 numeric columns:
-  // Amount (Rs), Units, Price (NAV), Unit Balance
-  const trailing = /(-?\(?[\d,]+(?:\.\d+)?\)?)\s+(-?\(?[\d,]+(?:\.\d+)?\)?)\s+(-?\(?[\d,]+(?:\.\d+)?\)?)\s+(-?\(?[\d,]+(?:\.\d+)?\)?)\s*\*?\s*$/;
-  const m = trailing.exec(rest);
-  if (!m) return null;
-  const amount = parseCasNum(m[1]);
-  const units = parseCasNum(m[2]);
-  const nav = parseCasNum(m[3]);
-  const balance = parseCasNum(m[4]);
-  const desc = rest.slice(0, m.index).trim();
-  if (!desc) return null;
-  return { date, desc, amount, units, nav, balance };
+  const [, date, restRaw] = dateM;
+  const rest = restRaw.trim();
+
+  // Primary: split on \t\t (column boundary).
+  const rawCols = rest.split(/\t\t/).map(c => c.replace(/[ \t]+/g, ' ').trim()).filter(Boolean);
+  if (rawCols.length >= 1) {
+    // Collect trailing numeric columns right-to-left.
+    let numTail = [];
+    let textEnd = rawCols.length;  // exclusive index of last "text" column
+    for (let k = rawCols.length - 1; k >= 0; k--) {
+      if (NUM_TOK.test(rawCols[k])) { numTail.unshift(parseCasNum(rawCols[k])); textEnd = k; }
+      else break;
+    }
+    // pdf.js often keeps description + amount + units fused into one column when
+    // the x-gap between them is smaller than the gap before NAV/balance. Peel
+    // any trailing "\s NUM" tokens out of the last text column so they count as
+    // additional numeric cols. Iterate — `(83,591.00) (1,609.888)` peels in two
+    // passes (one for the trailing number, one for the remaining NUM_TOK string).
+    // Pattern: allow parenthesised negatives and optional `*` marker.
+    const PEEL_TAIL_RE = /^([\s\S]*?)((?:\s(?:-?\(?[\d,]+(?:\.\d+)?\)?\*?)){1,4})\s*$/;
+    for (let safety = 0; safety < 6 && textEnd > 0; safety++) {
+      const lastText = rawCols[textEnd - 1];
+      if (!lastText) { rawCols.splice(textEnd - 1, 1); textEnd--; continue; }
+      if (NUM_TOK.test(lastText)) {
+        numTail.unshift(parseCasNum(lastText));
+        rawCols.splice(textEnd - 1, 1);
+        textEnd--;
+        continue;
+      }
+      const mm = PEEL_TAIL_RE.exec(lastText);
+      if (!mm || !mm[2].trim()) break;
+      const extras = mm[2].trim().split(/\s+/).map(parseCasNum);
+      const pre = mm[1].trim();
+      numTail = [...extras, ...numTail];
+      if (!pre) { rawCols.splice(textEnd - 1, 1); textEnd--; }
+      else rawCols[textEnd - 1] = pre;
+    }
+
+    const numCount = numTail.length;
+    const desc = rawCols.slice(0, textEnd).join(' ').trim();
+    if (numCount >= 1 && desc) {
+      if (numCount >= 4) {
+        const [amount, units, nav, balance] = numTail.slice(-4);
+        return { date, desc, amount, units, nav, balance, shape: 4 };
+      }
+      if (numCount === 3) {
+        // 3 trailing numerics is classic dividend-payout (units unchanged).
+        if (DIVIDEND_RE.test(desc)) {
+          const [amount, nav, balance] = numTail;
+          return { date, desc, amount, units: 0, nav, balance, shape: 3 };
+        }
+        // Otherwise assume [amount, units, balance] (rare; nav missing).
+        const [amount, units, balance] = numTail;
+        return { date, desc, amount, units, nav: 0, balance, shape: 3 };
+      }
+      if (numCount === 2) {
+        // Segregated portfolio / side-pocket only; otherwise too ambiguous to claim.
+        if (/segregated|side\s*pocket/i.test(desc)) {
+          return { date, desc, amount: numTail[0], units: 0, nav: 0, balance: numTail[1], shape: 2 };
+        }
+        // Fall through — don't claim a transaction we can't explain.
+      }
+      if (numCount === 1) {
+        // Tax rows: STT, stamp duty, TDS. These are charges, not trades.
+        if (/\bstt\b|stamp\s*duty|\btds\b|tax\s*deducted/i.test(desc)) {
+          return { date, desc, amount: numTail[0], units: 0, nav: 0, balance: 0, shape: 1 };
+        }
+      }
+    }
+  }
+
+  // Fallback: regex-only, when columns didn't come through.
+  const T4 = /(-?\(?[\d,]+(?:\.\d+)?\)?)\s+(-?\(?[\d,]+(?:\.\d+)?\)?)\s+(-?\(?[\d,]+(?:\.\d+)?\)?)\s+(-?\(?[\d,]+(?:\.\d+)?\)?)\s*\*?\s*$/;
+  const m4 = T4.exec(rest);
+  if (m4) {
+    const desc = rest.slice(0, m4.index).trim();
+    if (desc) return {
+      date, desc,
+      amount: parseCasNum(m4[1]),
+      units: parseCasNum(m4[2]),
+      nav: parseCasNum(m4[3]),
+      balance: parseCasNum(m4[4]),
+      shape: 4,
+    };
+  }
+
+  const T3 = /(-?\(?[\d,]+(?:\.\d+)?\)?)\s+(-?\(?[\d,]+(?:\.\d+)?\)?)\s+(-?\(?[\d,]+(?:\.\d+)?\)?)\s*\*?\s*$/;
+  const m3 = T3.exec(rest);
+  if (m3) {
+    const desc = rest.slice(0, m3.index).trim();
+    // Only accept 3-col fallback for dividend-shaped descriptions to avoid swallowing
+    // summary lines ("Total Cost Value: X Market Value on Y: Z") as transactions.
+    if (desc && DIVIDEND_RE.test(desc)) return {
+      date, desc,
+      amount: parseCasNum(m3[1]),
+      units: 0,
+      nav: parseCasNum(m3[2]),
+      balance: parseCasNum(m3[3]),
+      shape: 3,
+    };
+  }
+
+  // 2-col and 1-col fallbacks only accepted when the description hints at the shape
+  // (segregated portfolio / tax row). Without this guard, almost any text line with
+  // trailing numbers would match.
+  const T2 = /(-?\(?[\d,]+(?:\.\d+)?\)?)\s+(-?\(?[\d,]+(?:\.\d+)?\)?)\s*\*?\s*$/;
+  const m2 = T2.exec(rest);
+  if (m2) {
+    const desc = rest.slice(0, m2.index).trim();
+    if (desc && /segregated|side\s*pocket/i.test(desc)) return {
+      date, desc,
+      amount: parseCasNum(m2[1]),
+      units: 0, nav: 0,
+      balance: parseCasNum(m2[2]),
+      shape: 2,
+    };
+  }
+
+  const T1 = /(-?\(?[\d,]+(?:\.\d+)?\)?)\s*\*?\s*$/;
+  const m1 = T1.exec(rest);
+  if (m1) {
+    const desc = rest.slice(0, m1.index).trim();
+    if (desc && /\bstt\b|stamp\s*duty|\btds\b|tax\s*deducted/i.test(desc)) return {
+      date, desc,
+      amount: parseCasNum(m1[1]),
+      units: 0, nav: 0, balance: 0,
+      shape: 1,
+    };
+  }
+
+  return null;
 }
 
 async function parseCAS(file, password) {
@@ -1317,6 +1483,13 @@ async function parseCAS(file, password) {
   }
 
   const lines = await extractLines(pdf);
+  return parseCASFromLines(lines, pdf.numPages);
+}
+
+// Pure function — takes pre-extracted lines and runs the full CAMS classifier.
+// Exposed so the fixture harness can feed hand-written line arrays without a PDF.
+function parseCASFromLines(lines, pageCount) {
+  pageCount = pageCount || 1;
 
   // Detect format. v1 only supports CAMS CAS — reject KFintech / NSDL clearly.
   // Scan all lines: the CAMSCAS marker sits in the per-page footer, which can
@@ -1335,12 +1508,33 @@ async function parseCAS(file, password) {
     throw Object.assign(new Error('This does not look like a CAMS CAS. Only CAMS statements are supported in v1.'), { code: 'UNSUPPORTED_FORMAT' });
   }
 
+  // Summary vs Detailed CAS — only Detailed contains the transaction history
+  // we need. A Summary CAS has folios + scheme names but no per-txn rows,
+  // which silently produced "0 funds" before. Reject explicitly.
+  const casTypeM = /(Detailed|Summary)\s+Consolidated\s+Account\s+Statement/i.exec(fullText);
+  const explicitDetailed = casTypeM && /detailed/i.test(casTypeM[1]);
+  const explicitSummary = casTypeM && /summary/i.test(casTypeM[1]);
+  if (explicitSummary) {
+    throw Object.assign(
+      new Error('This appears to be a Summary CAS. Mitra needs a Detailed CAS — re-download from camsonline.com and choose "Detailed" (not "Summary").'),
+      { code: 'UNSUPPORTED_CAS_SUMMARY' }
+    );
+  }
+
+  const markersSeen = new Set();
+  markersSeen.add(/CAMSCASWS/i.test(fullText) ? 'CAMSCASWS' : 'CAMSCAS');
+  if (/camsonline\.com/i.test(fullText)) markersSeen.add('camsonline.com');
+  if (explicitDetailed) markersSeen.add('Detailed CAS');
+  if (/Segregated\s*Portfolio/i.test(fullText)) markersSeen.add('Segregated Portfolio');
+
   let investorName = '';
   let pan = '';
   const funds = [];
   let currentFund = null;
   let currentAmc = '';
   const warnings = [];
+  let rowsClassified = 0;
+  let rowsUnknown = 0;
 
   const panRe = /\b([A-Z]{5}\d{4}[A-Z])\b/;
   const amcRe = /^([A-Z][A-Za-z0-9 &().'-]+?)\s+Mutual\s+Fund\s*$/;
@@ -1351,9 +1545,13 @@ async function parseCAS(file, password) {
   const openingRe = /Opening\s+Unit\s+Balance\s*:?\s*([\-\(\)\d,\.]+)/i;
   const closingRe = /Closing\s+Unit\s+Balance\s*:?\s*([\-\(\)\d,\.]+)/i;
   const costRe = /Total\s+Cost\s+Value\s*:\s*([\-\(\)\d,\.]+)/i;
-  const marketRe = /Market\s+Value\s+on\s+(\d{1,2}-[A-Za-z]{3}-\d{4})\s*:\s*INR\s*([\-\(\)\d,\.]+)/i;
+  // Older CAMS statements use "Valuation on" in place of "Market Value on".
+  const marketRe = /(?:Market\s+Value|Valuation)\s+on\s+(\d{1,2}-[A-Za-z]{3}-\d{4})\s*:\s*INR\s*([\-\(\)\d,\.]+)/i;
   const navRe = /NAV\s+on\s+(\d{1,2}-[A-Za-z]{3}-\d{4})\s*:\s*INR\s*([\-\(\)\d,\.]+)/i;
-  const nameCandidateRe = /^[A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){1,3}$/;
+  // Investor-name regex accepts optional titles (MR/MRS/SMT/MS/SHRI/DR/M/S)
+  // and trailing suffixes ((MINOR)/(HUF)/(KARTA)/(POA)). Broader than v1 which
+  // silently skipped joint/minor holders.
+  const nameCandidateRe = /^(?:(?:MR|MRS|SMT|MS|SHRI|DR|M\/S)\.?\s+)?[A-Z][A-Za-z]+(?:\s+(?:[A-Z]\.?|[A-Z][A-Za-z]+)){0,4}(?:\s*\((?:MINOR|HUF|KARTA|POA)\))?$/;
 
   for (let i = 0; i < lines.length; i++) {
     const text = lines[i].text;
@@ -1401,30 +1599,39 @@ async function parseCAS(file, password) {
     //   `<CODE>-<SCHEME NAME> - ISIN: <ISIN>(Advisor: ...) Registrar : ...`
     // pdf.js sometimes splits this across lines, or inserts spaces between glyphs.
     // Strategy: find the ISIN pattern on this line (tolerant of spaces), then extract
-    // the scheme name from the text preceding it — optionally joining the previous line.
+    // the scheme name from the text preceding it — optionally joining up to 2 prior lines
+    // to cover the Registrar-line-wrap case where a long scheme name spans 3 y-bands.
     if (currentFund) {
-      const candidates = [text];
-      if (i > 0) candidates.push(lines[i - 1].text + ' ' + text);
-      for (const cand of candidates) {
+      const candidates = [text.replace(/\t\t/g, ' ')];
+      if (i > 0) candidates.push((lines[i - 1].text + ' ' + text).replace(/\t\t/g, ' '));
+      if (i > 1) candidates.push((lines[i - 2].text + ' ' + lines[i - 1].text + ' ' + text).replace(/\t\t/g, ' '));
+      // Try each candidate — earlier candidates may capture the ISIN, later
+      // (longer) candidates may also capture the scheme name. Don't break early;
+      // a single-line ISIN match without enough context to recover the scheme
+      // name should not stop us from trying multi-line joins.
+      for (let cIdx = 0; cIdx < candidates.length; cIdx++) {
+        const cand = candidates[cIdx];
         const isinTok = ISIN_TOLERANT_RE.exec(cand);
         if (!isinTok) continue;
         const isin = isinTok[1].replace(/\s+/g, '');
+        if (!isinCheckDigitValid(isin)) continue;
         if (!currentFund.isin) currentFund.isin = isin;
         if (!currentFund.schemeName) {
-          // Everything before "ISIN:" on the candidate line
           let before = cand.slice(0, isinTok.index).replace(/\s*-\s*$/, '').trim();
-          // Strip any leading folio/header noise up to the scheme code (letter/digit cluster + hyphen)
           const codeMatch = SCHEME_CODE_RE.exec(before);
           let afterCode = codeMatch ? before.slice(codeMatch[0].length) : before;
-          // If no scheme code was found, try finding one anywhere in the string
           if (!codeMatch) {
             const inline = /(?:^|\s)([A-Z0-9](?:\s*[A-Z0-9]){0,9})\s*-\s*(.+)$/.exec(before);
             if (inline) afterCode = inline[2];
           }
           const cleaned = cleanSchemeName(afterCode);
-          if (cleaned.length > 6) currentFund.schemeName = cleaned;
+          if (cleaned.length > 6) {
+            currentFund.schemeName = cleaned;
+            if (cIdx > 0) markersSeen.add('Registrar line-wrap');
+          }
         }
-        break;
+        // Stop only once we have both isin and a usable scheme name.
+        if (currentFund.isin && currentFund.schemeName) break;
       }
     }
 
@@ -1438,17 +1645,24 @@ async function parseCAS(file, password) {
     if (currentFund) {
       const t = tryExtractTxn(lines[i]);
       if (t) {
+        const type = classifyTxn(t.desc);
         currentFund.transactions.push({
           date: parseCasDate(t.date),
           description: t.desc,
-          type: classifyTxn(t.desc),
+          type,
           amount: t.amount,
           units: t.units,
           nav: t.nav,
           balance: t.balance,
+          shape: t.shape,
         });
+        if (type === 'OTHER') rowsUnknown++;
+        else rowsClassified++;
         continue;
       }
+      // Starts with a date but no shape matched — count as unknown so we can
+      // surface coverage gaps in parseMetadata.
+      if (/^\d{1,2}-[A-Za-z]{3}-\d{4}\b/.test(text.trim())) rowsUnknown++;
     }
 
     // Closing Unit Balance / cost / market / NAV — often on the same "footer" line
@@ -1458,48 +1672,89 @@ async function parseCAS(file, password) {
       const tcv = costRe.exec(text);
       if (tcv) currentFund.costValue = parseCasNum(tcv[1]);
       const mkt = marketRe.exec(text);
-      if (mkt) { currentFund.marketValue = parseCasNum(mkt[2]); currentFund.casNavDate = parseCasDate(mkt[1]); }
+      if (mkt) {
+        currentFund.marketValue = parseCasNum(mkt[2]);
+        currentFund.casNavDate = parseCasDate(mkt[1]);
+        markersSeen.add(/Valuation/i.test(text) ? 'Valuation on' : 'Market Value on');
+      }
       const navL = navRe.exec(text);
       if (navL) { currentFund.casNav = parseCasNum(navL[2]); currentFund.casNavDate = parseCasDate(navL[1]); }
     }
   }
 
-  // Consolidate per fund: compute totalUnits + totalInvested
+  // Consolidate per fund: compute totalUnits + totalInvested.
+  //
+  // Summary-first model:
+  //   Portfolio-summary anchors (costValue, closingBalance, casNav) are the
+  //   source of truth for the dashboard. Transaction history is best-effort.
+  //   When transaction sums disagree with the summary, we keep the summary
+  //   and emit a soft warning — we never hard-fail on parse-history gaps.
+  //
+  // A fund is skipped only if it has *neither* a usable summary anchor *nor*
+  // transactions. A fund with cost/closing anchors but zero parsed transactions
+  // is still shown; we just note the missing history as a warning.
   const finalFunds = [];
   for (const f of funds) {
-    if (!f.transactions.length) { warnings.push(`Folio ${f.folioNumber}: no transactions parsed`); continue; }
+    const hasAnchor = (f.costValue != null && f.costValue > 0) || (f.closingBalance != null && f.closingBalance >= 0);
+    if (!f.transactions.length && !hasAnchor) {
+      warnings.push(`Folio ${f.folioNumber}: no transactions or summary totals parsed`);
+      continue;
+    }
     if (!f.schemeName) { warnings.push(`Folio ${f.folioNumber}: scheme name could not be identified`); continue; }
 
-    // totalInvested: prefer CAS-reported "Total Cost Value" (authoritative, covers pre-period purchases).
-    let invested = 0;
+    // Transaction-derived totals (best-effort).
+    let txnInvested = 0;
+    for (const t of f.transactions) {
+      if (['PURCHASE','SIP','SWITCH_IN','DIVIDEND_REINVEST'].includes(t.type)) txnInvested += t.amount;
+      else if (['REDEMPTION','SWITCH_OUT'].includes(t.type)) txnInvested -= Math.abs(t.amount);
+    }
+    let txnUnits = f.openingBalance || 0;
+    for (const t of f.transactions) {
+      if (['PURCHASE','SIP','SWITCH_IN','DIVIDEND_REINVEST'].includes(t.type)) txnUnits += t.units;
+      else if (['REDEMPTION','SWITCH_OUT'].includes(t.type)) txnUnits -= Math.abs(t.units);
+    }
+
+    // totalInvested: summary anchor wins; fall back to transaction sum.
+    let invested, investedSource;
     if (f.costValue != null && f.costValue > 0) {
       invested = f.costValue;
+      investedSource = 'summary';
+      // Soft warning when history materially disagrees with the summary.
+      if (f.transactions.length && Math.abs(txnInvested - f.costValue) > 1) {
+        warnings.push(
+          `${f.schemeName}: transaction history incomplete (sum ${Math.round(txnInvested).toLocaleString('en-IN')} vs summary ${Math.round(f.costValue).toLocaleString('en-IN')}) — summary totals used`
+        );
+      }
     } else {
-      for (const t of f.transactions) {
-        if (t.type === 'PURCHASE' || t.type === 'SIP' || t.type === 'SWITCH_IN' || t.type === 'DIVIDEND_REINVEST') {
-          invested += t.amount;
-        } else if (t.type === 'REDEMPTION' || t.type === 'SWITCH_OUT') {
-          invested -= Math.abs(t.amount);
-        }
-      }
+      invested = txnInvested;
+      investedSource = 'transactions';
+      warnings.push(`${f.schemeName || f.folioNumber}: summary "Total Cost Value" not found — computed from transactions`);
     }
 
-    // totalUnits: prefer "Closing Unit Balance", else last running balance, else compute.
-    let units = 0;
-    if (f.closingBalance != null && f.closingBalance >= 0) units = f.closingBalance;
-    else {
+    // totalUnits: closing-balance anchor wins; fall back to last running balance; last resort, recompute.
+    let units, unitsSource;
+    if (f.closingBalance != null && f.closingBalance >= 0) {
+      units = f.closingBalance;
+      unitsSource = 'summary';
+    } else {
       const last = f.transactions[f.transactions.length - 1];
-      if (last && !isNaN(last.balance) && last.balance >= 0) units = last.balance;
-      else {
-        units = f.openingBalance || 0;
-        for (const t of f.transactions) {
-          if (['PURCHASE','SIP','SWITCH_IN','DIVIDEND_REINVEST'].includes(t.type)) units += t.units;
-          else if (['REDEMPTION','SWITCH_OUT'].includes(t.type)) units -= Math.abs(t.units);
-        }
+      if (last && !isNaN(last.balance) && last.balance >= 0) {
+        units = last.balance;
+        unitsSource = 'last-txn-balance';
+      } else {
+        units = txnUnits;
+        unitsSource = 'transactions';
       }
+      warnings.push(`${f.schemeName || f.folioNumber}: summary "Closing Unit Balance" not found — computed from transactions`);
     }
 
-    finalFunds.push({ ...f, totalUnits: units, totalInvested: invested });
+    finalFunds.push({
+      ...f,
+      totalUnits: units,
+      totalInvested: invested,
+      investedSource,
+      unitsSource,
+    });
   }
 
   // Consolidate across multiple folios under same ISIN (PRD 11: multi-folio auto-merge)
@@ -1533,12 +1788,291 @@ async function parseCAS(file, password) {
     }
   }
 
+  const parseMetadata = {
+    version: explicitDetailed ? 'CAMS-DETAILED' : 'CAMS-DETAILED-INFERRED',
+    markersSeen: [...markersSeen].sort(),
+    rowsClassified,
+    rowsUnknown,
+    lineCount: lines.length,
+    pageCount,
+    fundCount: merged.length,
+    parsedAt: new Date().toISOString(),
+  };
+
   return {
     investorName,
     pan,
     funds: merged,
     warnings,
+    parseMetadata,
+    rawLines: lines,  // for diagnostic export (sanitized before persistence)
   };
+}
+
+// ============================================================
+// diagnostic export — sanitized parse artifact
+// ============================================================
+// Produces a JSON blob with PAN / folio / investor-name redacted but keeps
+// scheme names, amounts, and the raw line array for regression / triage.
+function buildDiagnostic(parseResult) {
+  if (!parseResult) return null;
+  const pan = parseResult.pan || '';
+  const name = parseResult.investorName || '';
+  const folios = new Set();
+  for (const f of parseResult.funds || []) {
+    if (f.folioNumber) folios.add(f.folioNumber);
+    if (Array.isArray(f.folios)) for (const x of f.folios) if (x) folios.add(x);
+  }
+  // Placeholders chosen to satisfy the parser's own regexes so the diagnostic
+  // remains *replayable* (CI harness re-parses these lines and expects the same
+  // output). PAN pattern [A-Z]{5}\d{4}[A-Z], folio pattern [\w\s\/\-]+.
+  const PAN_PLACEHOLDER = 'AAAAA1234A';
+  const FOLIO_PLACEHOLDER = 'XXXXX0000';
+  const escapeRe = (c) => c.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const redact = (text) => {
+    if (!text) return text;
+    let t = text;
+    if (pan) t = t.split(pan).join(PAN_PLACEHOLDER);
+    if (name) {
+      t = t.split(name).join('REDACTED');
+      t = t.split(name.toUpperCase()).join('REDACTED');
+    }
+    // Folios are stored with whitespace stripped (e.g. "10786967/45"), but the
+    // raw line text preserves surrounding spaces ("10786967 / 45"). Build a
+    // regex that tolerates whitespace around the `/` and `-` separators so the
+    // match actually lands.
+    for (const f of folios) {
+      if (!f) continue;
+      let pattern = '';
+      for (const c of f) {
+        pattern += /[\/\-]/.test(c) ? ('\\s*' + escapeRe(c) + '\\s*') : escapeRe(c);
+      }
+      try {
+        t = t.replace(new RegExp(pattern, 'g'), FOLIO_PLACEHOLDER);
+      } catch (_) { /* fallback: straight split */
+        t = t.split(f).join(FOLIO_PLACEHOLDER);
+      }
+    }
+    return t;
+  };
+  return {
+    version: parseResult.parseMetadata?.version,
+    parseMetadata: parseResult.parseMetadata,
+    warnings: parseResult.warnings || [],
+    funds: (parseResult.funds || []).map(f => ({
+      amc: f.amc,
+      schemeName: f.schemeName,
+      isin: f.isin,
+      totalUnits: f.totalUnits,
+      totalInvested: f.totalInvested,
+      costValue: f.costValue,
+      closingBalance: f.closingBalance,
+      marketValue: f.marketValue,
+      casNav: f.casNav,
+      casNavDate: f.casNavDate,
+      investedSource: f.investedSource,
+      unitsSource: f.unitsSource,
+      transactionCount: (f.transactions || []).length,
+    })),
+    lines: (parseResult.rawLines || []).map(l => ({
+      page: l.page, y: Math.round(l.y), text: redact(l.text),
+    })),
+  };
+}
+
+function downloadDiagnostic(diag) {
+  if (!diag) return;
+  const blob = new Blob([JSON.stringify(diag, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+  a.href = url;
+  a.download = `mitra-diagnostic-${ts}.json`;
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 0);
+}
+
+// ============================================================
+// parser fixtures — runs when ?debug=parser is in the URL
+// ============================================================
+function _mkLine(page, y, text) { return { page, y, text }; }
+
+function runParserFixtures() {
+  const fixtures = [];
+
+  // Fixture 1 — a minimal Detailed CAMS CAS with one folio, two purchases,
+  // one redemption. Lines use \t\t column separators, matching extractLines.
+  fixtures.push({
+    name: 'CAMS-DETAILED-4col',
+    lines: [
+      _mkLine(1, 800, 'Detailed Consolidated Account Statement'),
+      _mkLine(1, 780, 'ABCDE1234F'),
+      _mkLine(1, 770, 'John Doe'),
+      _mkLine(1, 750, 'Axis Mutual Fund'),
+      _mkLine(1, 730, 'Folio No: 12345678 / 0\t\tPAN: ABCDE1234F\t\tKYC: OK'),
+      _mkLine(1, 715, 'AX123-Axis Bluechip Fund - Direct Plan - Growth - ISIN: INF846K01EW2'),
+      _mkLine(1, 700, 'Opening Unit Balance: 0.000'),
+      _mkLine(1, 680, '10-Apr-2026\t\tPurchase\t\t5,000.00\t\t43.210\t\t115.670\t\t43.210'),
+      _mkLine(1, 665, '15-May-2026\t\tPurchase\t\t5,000.00\t\t42.105\t\t118.750\t\t85.315'),
+      _mkLine(1, 650, '01-Jun-2026\t\tRedemption\t\t(1,000.00)\t\t(8.421)\t\t118.750\t\t76.894'),
+      _mkLine(1, 630, 'Closing Unit Balance: 76.894\t\tTotal Cost Value: 9,000.00'),
+      _mkLine(1, 615, 'Market Value on 10-Apr-2026: INR 9,130.78\t\tNAV on 10-Apr-2026: INR 118.75'),
+      _mkLine(1, 40, 'CAMSCASWS'),
+    ],
+    expect: (res) => {
+      if (res.funds.length !== 1) throw new Error('expected 1 fund, got ' + res.funds.length);
+      const f = res.funds[0];
+      if (f.totalInvested !== 9000) throw new Error('expected totalInvested=9000, got ' + f.totalInvested);
+      if (Math.abs(f.totalUnits - 76.894) > 0.001) throw new Error('expected totalUnits≈76.894, got ' + f.totalUnits);
+      if (!f.isin || f.isin !== 'INF846K01EW2') throw new Error('expected ISIN=INF846K01EW2, got ' + f.isin);
+      if (f.transactions.length !== 3) throw new Error('expected 3 txns, got ' + f.transactions.length);
+      const types = f.transactions.map(t => t.type).sort();
+      if (JSON.stringify(types) !== JSON.stringify(['PURCHASE','PURCHASE','REDEMPTION'])) {
+        throw new Error('unexpected txn types: ' + JSON.stringify(types));
+      }
+    },
+  });
+
+  // Fixture 2 — dividend payout (3-column row) must classify as DIVIDEND_PAYOUT
+  // and must NOT change totalUnits from the summary anchor.
+  fixtures.push({
+    name: 'CAMS-DETAILED-dividend-payout',
+    lines: [
+      _mkLine(1, 800, 'Detailed Consolidated Account Statement'),
+      _mkLine(1, 780, 'ABCDE1234F'),
+      _mkLine(1, 770, 'Jane Doe'),
+      _mkLine(1, 750, 'HDFC Mutual Fund'),
+      _mkLine(1, 730, 'Folio No: 87654321 / 0\t\tPAN: ABCDE1234F\t\tKYC: OK'),
+      _mkLine(1, 715, 'HD987-HDFC Dividend Yield Fund - Direct IDCW Payout - ISIN: INF179KC1AA5'),
+      _mkLine(1, 700, 'Opening Unit Balance: 100.000'),
+      _mkLine(1, 680, '10-Apr-2026\t\tIDCW Payout @ Rs.2.50\t\t250.00\t\t10.500\t\t100.000'),
+      _mkLine(1, 630, 'Closing Unit Balance: 100.000\t\tTotal Cost Value: 5,000.00'),
+      _mkLine(1, 615, 'Market Value on 10-Apr-2026: INR 1,050.00\t\tNAV on 10-Apr-2026: INR 10.50'),
+      _mkLine(1, 40, 'CAMSCASWS'),
+    ],
+    expect: (res) => {
+      const f = res.funds[0];
+      if (!f) throw new Error('expected 1 fund');
+      if (f.totalUnits !== 100) throw new Error('expected units unchanged, got ' + f.totalUnits);
+      const t = f.transactions.find(x => x.type === 'DIVIDEND_PAYOUT');
+      if (!t) throw new Error('expected a DIVIDEND_PAYOUT transaction, types=' + JSON.stringify(f.transactions.map(x => x.type)));
+    },
+  });
+
+  // Fixture 2b — the real-world column layout from CAMS V3.4 where pdf.js
+  // emits `desc amount units` fused into one column (no \t\t between them),
+  // then \t\t before NAV and balance. This is what tripped v1.2 (every fund
+  // showed "transaction history incomplete" because amount was being read as
+  // NAV). Peel logic should recover the 4-col shape.
+  fixtures.push({
+    name: 'CAMS-DETAILED-fused-columns',
+    lines: [
+      _mkLine(1, 800, 'Detailed Consolidated Account Statement'),
+      _mkLine(1, 780, 'ABCDE1234F'),
+      _mkLine(1, 770, 'Test User'),
+      _mkLine(1, 750, 'DSP Mutual Fund'),
+      _mkLine(1, 730, 'Folio No: 12345 / 0\t\tPAN: ABCDE1234F\t\tKYC: OK'),
+      _mkLine(1, 715, 'D896- DSP Multi Asset Allocation Fund - Direct - Growth - ISIN : INF740KA1TE9'),
+      _mkLine(1, 700, 'Opening Unit Balance: 0.000'),
+      _mkLine(1, 680, '20-Jan-2026 Purchase-BSE - - INA200005166 4,999.75 304.701\t\t16.4087\t\t304.701'),
+      _mkLine(1, 665, '20-Jan-2026 *** Stamp Duty ***\t\t0.25'),
+      _mkLine(1, 650, '22-Jan-2026 Purchase-BSE - - INA200005166 49,997.50 3,047.532\t\t16.4059\t\t3,352.233'),
+      _mkLine(1, 635, '22-Jan-2026 *** Stamp Duty ***\t\t2.50'),
+      _mkLine(1, 620, 'Closing Unit Balance: 3,352.233\t\tTotal Cost Value: 54,997.25'),
+      _mkLine(1, 605, 'NAV on 16-Apr-2026: INR 16.5718\t\tMarket Value on 16-Apr-2026: INR 55,550.50'),
+      _mkLine(1, 40, 'CAMSCASWS'),
+    ],
+    expect: (res) => {
+      const f = res.funds[0];
+      if (!f) throw new Error('expected 1 fund');
+      // Purchases: 4999.75 + 49997.50 = 54997.25 — matches summary "Total Cost Value".
+      const purchases = f.transactions.filter(t => t.type === 'PURCHASE');
+      if (purchases.length !== 2) throw new Error('expected 2 purchases, got ' + purchases.length);
+      const sumAmt = purchases.reduce((s, t) => s + t.amount, 0);
+      if (Math.abs(sumAmt - 54997.25) > 0.01) {
+        throw new Error('expected purchase sum 54997.25, got ' + sumAmt);
+      }
+      // Totals from summary anchors should match.
+      if (f.totalInvested !== 54997.25) throw new Error('expected totalInvested=54997.25, got ' + f.totalInvested);
+    },
+  });
+
+  // Fixture 2c — a redemption row where the amount + units are both in the
+  // fused column AND both wrapped in parens (negative). Peel should recover
+  // both as negatives and produce a negative-amount REDEMPTION.
+  fixtures.push({
+    name: 'CAMS-DETAILED-paren-negative-redemption',
+    lines: [
+      _mkLine(1, 800, 'Detailed Consolidated Account Statement'),
+      _mkLine(1, 780, 'ABCDE1234F'),
+      _mkLine(1, 770, 'Test User'),
+      _mkLine(1, 750, 'Mirae Asset Mutual Fund'),
+      _mkLine(1, 730, 'Folio No: 99999 / 0\t\tPAN: ABCDE1234F\t\tKYC: OK'),
+      _mkLine(1, 715, '117TSD 1G - Mirae Asset ELSS Tax Saver Fund - Direct Plan - ISIN : INF769K01DM9'),
+      _mkLine(1, 700, 'Opening Unit Balance: 8,705.000'),
+      _mkLine(1, 680, '28-Apr-2025 Redemption Directly credited to your Bank account (HDFC BANK-DCB)\t\t(83,591.00) (1,609.888)\t\t51.924\t\t7,095.112'),
+      _mkLine(1, 620, 'Closing Unit Balance: 7,095.112\t\tTotal Cost Value: 0.00'),
+      _mkLine(1, 605, 'NAV on 16-Apr-2026: INR 55.029\t\tMarket Value on 16-Apr-2026: INR 390,566.42'),
+      _mkLine(1, 40, 'CAMSCASWS'),
+    ],
+    expect: (res) => {
+      const f = res.funds[0];
+      if (!f) throw new Error('expected 1 fund');
+      const t = f.transactions.find(x => x.type === 'REDEMPTION');
+      if (!t) throw new Error('expected REDEMPTION transaction, got types ' + JSON.stringify(f.transactions.map(x => x.type)));
+      if (Math.abs(t.amount - (-83591)) > 0.01) throw new Error('expected amount=-83591, got ' + t.amount);
+      if (Math.abs(t.units - (-1609.888)) > 0.001) throw new Error('expected units=-1609.888, got ' + t.units);
+    },
+  });
+
+  // Fixture 3 — long scheme name wraps onto 2 lines with "Registrar:" on the
+  // next y-band. Scheme name must still be recovered.
+  fixtures.push({
+    name: 'CAMS-DETAILED-registrar-wrap',
+    lines: [
+      _mkLine(1, 800, 'Detailed Consolidated Account Statement'),
+      _mkLine(1, 780, 'ABCDE1234F'),
+      _mkLine(1, 770, 'Joint Holder'),
+      _mkLine(1, 750, 'Parag Parikh Mutual Fund'),
+      _mkLine(1, 730, 'Folio No: 55555555 / 0\t\tPAN: ABCDE1234F\t\tKYC: OK'),
+      _mkLine(1, 715, 'PPF123-Parag Parikh Flexi Cap Fund - Direct Plan - Growth'),
+      _mkLine(1, 708, '- ISIN: INF879O01027 (Advisor: DIRECT)'),
+      _mkLine(1, 700, 'Registrar: CAMS'),
+      _mkLine(1, 690, 'Opening Unit Balance: 0.000'),
+      _mkLine(1, 680, '10-Apr-2026\t\tPurchase\t\t10,000.00\t\t150.000\t\t66.667\t\t150.000'),
+      _mkLine(1, 630, 'Closing Unit Balance: 150.000\t\tTotal Cost Value: 10,000.00'),
+      _mkLine(1, 615, 'Market Value on 10-Apr-2026: INR 10,000.00\t\tNAV on 10-Apr-2026: INR 66.67'),
+      _mkLine(1, 40, 'CAMSCASWS'),
+    ],
+    expect: (res) => {
+      const f = res.funds[0];
+      if (!f) throw new Error('expected 1 fund');
+      if (!/Parag\s*Parikh/i.test(f.schemeName)) {
+        throw new Error('scheme name did not include "Parag Parikh": ' + JSON.stringify(f.schemeName));
+      }
+      if (f.totalInvested !== 10000) throw new Error('expected totalInvested=10000, got ' + f.totalInvested);
+    },
+  });
+
+  let passed = 0;
+  const failures = [];
+  for (const fx of fixtures) {
+    try {
+      const res = parseCASFromLines(fx.lines, 1);
+      fx.expect(res);
+      passed++;
+    } catch (e) {
+      failures.push({ name: fx.name, error: e?.message || String(e) });
+    }
+  }
+  console.log(`[Mitra fixtures] ${passed}/${fixtures.length} passed`);
+  if (failures.length) {
+    console.group('[Mitra fixtures] failures');
+    for (const f of failures) console.error(f.name, '—', f.error);
+    console.groupEnd();
+  }
+  return { passed, total: fixtures.length, failures };
 }
 
 // ============================================================
@@ -1609,6 +2143,12 @@ function uuid() {
 // ============================================================
 // Alpine: register store + root component
 // ============================================================
+// Parser-fixture harness — fires only when the URL has ?debug=parser.
+// Zero cost in normal usage.
+if (typeof location !== 'undefined' && /[?&]debug=parser\b/.test(location.search)) {
+  try { runParserFixtures(); } catch (e) { console.error('[Mitra fixtures] crashed', e); }
+}
+
 document.addEventListener('alpine:init', () => {
   Alpine.store('portfolio', {
     user: null,
@@ -1643,6 +2183,8 @@ document.addEventListener('alpine:init', () => {
     showResetConfirm: false,
     showForgotPinConfirm: false,
     showPinSetup: false,
+    showExportConfirm: false,
+    hasDiagnostic: false,
     navBanner: '',
 
     // Import state
@@ -1677,6 +2219,7 @@ document.addEventListener('alpine:init', () => {
 
     async init() {
       await this.$store.portfolio.loadFromDB();
+      await this.refreshDiagnosticAvailability();
       this.nameInput = this.$store.portfolio.user?.name || '';
       const u = this.$store.portfolio.user;
       const funds = this.$store.portfolio.funds;
@@ -1732,6 +2275,7 @@ document.addEventListener('alpine:init', () => {
       else if (this.showReplaceConfirm) this.showReplaceConfirm = false;
       else if (this.showResetConfirm) this.showResetConfirm = false;
       else if (this.showForgotPinConfirm) this.showForgotPinConfirm = false;
+      else if (this.showExportConfirm) this.showExportConfirm = false;
       else if (this.showPinSetup) this.cancelPinSetup();
     },
 
@@ -1840,6 +2384,7 @@ document.addEventListener('alpine:init', () => {
           pan: !!result.pan,
           funds: result.funds.length,
           warnings: result.warnings,
+          parseMetadata: result.parseMetadata,
           sampleFund: result.funds[0] && {
             scheme: result.funds[0].schemeName,
             isin: result.funds[0].isin,
@@ -1847,6 +2392,17 @@ document.addEventListener('alpine:init', () => {
             cost: result.funds[0].costValue,
           },
         });
+        // Persist a sanitized diagnostic so the user can export it from Settings
+        // later — even after navigating away from the import summary.
+        try {
+          const diag = buildDiagnostic(result);
+          if (diag) {
+            await DB.setMeta('lastParseDiagnostic', diag);
+            this.hasDiagnostic = true;
+          }
+        } catch (diagErr) {
+          console.warn('[Mitra] could not save diagnostic artifact', diagErr);
+        }
         // Zero-content guard
         if (!result.funds.length) {
           this.importStep = 'error';
@@ -2154,6 +2710,7 @@ document.addEventListener('alpine:init', () => {
       this.nameInput = '';
       this.pinEntry = '';
       this.pinError = '';
+      this.hasDiagnostic = false;
       this.currentView = 'empty';
     },
 
@@ -2165,6 +2722,21 @@ document.addEventListener('alpine:init', () => {
     async confirmForgotPin() {
       this.showForgotPinConfirm = false;
       await this._resetAll();
+    },
+
+    async refreshDiagnosticAvailability() {
+      const diag = await DB.getMeta('lastParseDiagnostic');
+      this.hasDiagnostic = !!diag;
+    },
+
+    async confirmExportDiagnostic() {
+      this.showExportConfirm = false;
+      const diag = await DB.getMeta('lastParseDiagnostic');
+      if (!diag) {
+        this.navBanner = 'No diagnostic available yet — import a statement first.';
+        return;
+      }
+      downloadDiagnostic(diag);
     },
   }));
 });

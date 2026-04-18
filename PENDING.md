@@ -13,20 +13,24 @@ Tracking what's deferred from the v1 implementation in `index.html`. Sorted by p
 ### CAMS edge cases not yet validated
 Tested against exactly one real CAMS CAS (`CAS_01042025-17042026_*_unlocked.pdf`). Likely gaps, in rough order of incidence:
 
-- [ ] **NFO allotments** — may report units without a matching `Purchase` row description.
+- [x] **Dividend payouts** — *closed via 4-shape transaction cascade in v1.2 (`tryExtractTxn` accepts 3-col rows; `DIVIDEND_RE` distinguishes payout vs reinvest).*
+- [x] **STT / Stamp duty / TDS rows** — *closed via 1-col shape; previously misclassified as `OTHER`.*
+- [x] **Segregated portfolio (side-pocket) rows** — *closed via 2-col shape.*
+- [x] **Joint / minor / PoA holders** — *closed: `nameCandidateRe` now accepts `MR/MRS/SMT/MS/SHRI/DR/M\/S` titles and `(MINOR)/(HUF)/(KARTA)/(POA)` suffixes.*
+- [x] **Pre-2022 CAMS layouts** — *partial: `marketRe` now accepts both "Market Value on" and "Valuation on". Format detection still relies on the `CAMSCAS` footer marker.*
+- [~] **NFO allotments** — *partial: 3-col shape now catches some allotment rows; "Allotment" description still classifies as `PURCHASE`. Still untested against an actual NFO CAS.*
+- [~] **IDCW / Dividend option schemes** — *parsing closed; AMFI fuzzy-match collision with growth variants is unchanged (separate concern from parser).*
 - [ ] **Bonus units / stock splits** — unit count changes with no invested amount.
-- [ ] **Dividend payouts** — amount flows out, units unchanged; my regex requires 4 trailing numeric columns and may reject these rows.
-- [ ] **SIP registration / SIP cancellation** — often no numeric columns; currently classified `OTHER` and ignored.
+- [ ] **SIP registration / SIP cancellation** — often no numeric columns; still classified `OTHER` and ignored.
 - [ ] **Folio-level switches across AMCs** — requires linking a `SWITCH_OUT` in one fund to a `SWITCH_IN` in another.
-- [ ] **Joint / minor / PoA holders** — investor-name regex (`^[A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,3}$`) breaks on "MR. FIRST M. LAST (MINOR)" / "SMT. FIRST LAST".
-- [ ] **Pre-2022 CAMS layouts** — heading/column ordering differed. Detection only checks for the `CAMSCAS` marker, not version.
-- [ ] **Statements with 20+ funds** — untested; multi-page transaction tables and tighter y-coordinate packing could merge adjacent rows.
-- [ ] **IDCW / Dividend option schemes** — "IDCW" normalizes to "dividend" in `normalizeSchemeName`; AMFI fuzzy matching may collide with growth variants that share a base name.
+- [ ] **Statements with 20+ funds** — multi-page transaction tables, tighter y-band packing. Should be more robust now that x-gap column detection no longer relies on `mergeOrphanNumbers`, but unverified.
 
 ### Parser hardening
 - [ ] Proper AMFI-matching quality metric: currently falls through to a name-token-overlap score ≥ 0.7 with no tie-breaker. Ambiguous matches should be flagged, not silently picked.
-- [ ] Cleaner orphan-number heuristic: `mergeOrphanNumbers` attaches lone numeric lines to adjacent transactions; could attach to the wrong row when the preceding row is also incomplete.
-- [ ] Format autodetection should look at more than just the header — some CAMS statements are relayed via KFintech or vice versa.
+- [x] ~~Cleaner orphan-number heuristic~~ — *closed in v1.2: `extractLines` now emits `\t\t` column separators based on x-gaps, so transaction rows arrive intact and `mergeOrphanNumbers` was deleted.*
+- [ ] Format autodetection should look at more than just the header — some CAMS statements are relayed via KFintech or vice versa. (Summary CAS is now rejected upfront via `CAS_TYPE_RE`.)
+- [x] **Diagnostic export** — *closed: Settings → About → "Export Diagnostic" downloads a sanitized JSON of the last parse (PAN/folio/name redacted; scheme names + amounts retained) to help diagnose parser issues against real CAS PDFs without sharing PII.*
+- [x] **Fixture harness** — *closed: `?debug=parser` runs in-browser fixtures (`runParserFixtures`) covering 4-col purchase, 3-col dividend payout, and Registrar line-wrap. Result logged to console as `[Mitra fixtures] N/M passed`.*
 
 ---
 

@@ -7,6 +7,11 @@
 # Do not commit any PDF — real CAS statements contain PII (PAN, mobile, transactions)
 *.pdf
 
+# Local diagnostic fixtures — sanitised but may still contain scheme/amount data
+# you're not ready to publish. Opt in per file by un-ignoring it explicitly.
+fixtures/*.json
+!fixtures/*.public.json
+
 # wrangler files
 .wrangler
 .dev.vars*
