@@ -1485,12 +1485,17 @@ function tryExtractTxn(line) {
 // Format detection — scans line text for depository / registrar marker strings.
 // Returns one of 'CAMS' | 'CDSL' | 'NSDL' | 'KFINTECH' | 'UNKNOWN'. Markers
 // are taken from codereverser/casparser's `parse_file_type` in parsers/mupdf.py.
+//
+// Order matters: CAMS is checked FIRST because CAMS CAS PDFs may incidentally
+// mention "Central Depository Services" or "NSDL" in footer disclaimers. The
+// `CAMSCASWS` / `camsonline.com` markers are unambiguous — if they're present,
+// the file is definitely a CAMS CAS. Same logic for KFintech after CAMS.
 function detectFormat(lines) {
   const fullText = lines.map(l => l.text).join(' | ');
-  if (/Central\s+Depository\s+Services\s*\(India\)\s*Limited/i.test(fullText)) return 'CDSL';
-  if (/NSDL\s+Consolidated\s+Account\s+Statement|About\s+NSDL/i.test(fullText)) return 'NSDL';
   if (/CAMSCAS(?:WS)?|camsonline\.com/i.test(fullText)) return 'CAMS';
   if (/KFINCAS|KFINTECH\s+Consolidated|WWW\.KFINTECH\.COM|mfs\.kfintech\.com/i.test(fullText)) return 'KFINTECH';
+  if (/Central\s+Depository\s+Services\s*\(India\)\s*Limited/i.test(fullText)) return 'CDSL';
+  if (/NSDL\s+Consolidated\s+Account\s+Statement|About\s+NSDL/i.test(fullText)) return 'NSDL';
   return 'UNKNOWN';
 }
 
