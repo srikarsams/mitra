@@ -876,7 +876,7 @@
 // ============================================================
 // App version — bump on each release and shown in Settings + footer.
 // ============================================================
-const APP_VERSION = '1.2.1';
+const APP_VERSION = '1.2.2';
 
 // ============================================================
 // DB (Dexie)
@@ -1713,10 +1713,13 @@ function parseCASFromLines(lines, pageCount) {
     }
     if (!f.schemeName) { warnings.push(`Folio ${f.folioNumber}: scheme name could not be identified`); continue; }
 
-    // Transaction-derived totals (best-effort).
+    // Transaction-derived totals (best-effort). STAMP_DUTY counts toward
+    // cost because CAMS's "Total Cost Value" includes it. TAX (STT, TDS) is
+    // typically deducted from redemption proceeds rather than added to cost,
+    // so we leave it out.
     let txnInvested = 0;
     for (const t of f.transactions) {
-      if (['PURCHASE','SIP','SWITCH_IN','DIVIDEND_REINVEST'].includes(t.type)) txnInvested += t.amount;
+      if (['PURCHASE','SIP','SWITCH_IN','DIVIDEND_REINVEST','STAMP_DUTY'].includes(t.type)) txnInvested += t.amount;
       else if (['REDEMPTION','SWITCH_OUT'].includes(t.type)) txnInvested -= Math.abs(t.amount);
     }
     let txnUnits = f.openingBalance || 0;
@@ -1731,7 +1734,12 @@ function parseCASFromLines(lines, pageCount) {
       invested = f.costValue;
       investedSource = 'summary';
       // Soft warning when history materially disagrees with the summary.
-      if (f.transactions.length && Math.abs(txnInvested - f.costValue) > 1) {
+      // Suppress when the fund had a non-zero opening balance — the gap is
+      // expected in that case (pre-period purchases are outside the statement
+      // window), summary anchors remain authoritative, and the warning would
+      // just be noise.
+      const hasPrePeriodUnits = (f.openingBalance || 0) > 0;
+      if (f.transactions.length && !hasPrePeriodUnits && Math.abs(txnInvested - f.costValue) > 1) {
         warnings.push(
           `${f.schemeName}: transaction history incomplete (sum ${Math.round(txnInvested).toLocaleString('en-IN')} vs summary ${Math.round(f.costValue).toLocaleString('en-IN')}) — summary totals used`
         );
