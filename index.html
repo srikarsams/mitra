@@ -876,7 +876,7 @@
 // ============================================================
 // App version — bump on each release and shown in Settings + footer.
 // ============================================================
-const APP_VERSION = '1.2.0';
+const APP_VERSION = '1.2.1';
 
 // ============================================================
 // DB (Dexie)
@@ -1195,28 +1195,32 @@ const DIVIDEND_RE = /(div\.?|dividend|idcw)\b.*?(?:@\s*(?:rs\.?|₹|inr)?\s*([\d
 
 function classifyTxn(desc) {
   const d = (desc || '').toLowerCase();
-  // Reversals come first — a rejected SIP / dishonoured cheque must not be
+  // Reversals first — a rejected SIP / dishonoured cheque must not be
   // treated as a purchase even though the description contains "purchase".
   if (/reversal|rejection|dishonou?red|mismatch|insufficient\s*balance/.test(d)) return 'REVERSAL';
-  if (/stamp\s*duty/.test(d)) return 'STAMP_DUTY';
-  if (/\bstt\b|securities\s*transaction\s*tax/.test(d)) return 'TAX';
-  if (/\btds\b|tax\s*deducted/.test(d)) return 'TAX';
+  // Primary action verbs next. These MUST win over TAX/STAMP because CAMS
+  // descriptions like "Redemption less TDS, STT" or "Purchase - less stamp duty"
+  // embed tax keywords as suffixes. Classifying such a row as TAX would drop
+  // the main transaction's amount from the invested-sum reconciliation.
   if (/switch\s*out|switch-out|merger.*out/.test(d)) return 'SWITCH_OUT';
   if (/switch\s*in|switch-in|merger.*in/.test(d)) return 'SWITCH_IN';
   if (/systematic\s*withdrawal|\bswp\b/.test(d)) return 'REDEMPTION';
   if (/systematic\s*transfer|\bstp\s*out/.test(d)) return 'SWITCH_OUT';
   if (/\bstp\s*in/.test(d)) return 'SWITCH_IN';
-  // casparser SIP grammar: "systematic", "instal(l)ment", "sys.*invest"
   if (/systematic\s*(investment|purchase)/.test(d)) return 'SIP';
   if (/instal+ment/.test(d)) return 'SIP';
   if (/sys\.?\s*invest/.test(d)) return 'SIP';
   if (/\bsip\b/.test(d)) return 'SIP';
   if (/redemption|redeem/.test(d)) return 'REDEMPTION';
-  // Dividend: reinvest explicitly beats payout; IDCW is the modern AMFI term.
   if (/(div\.?|dividend|idcw).*reinvest/.test(d)) return 'DIVIDEND_REINVEST';
   if (/(div\.?|dividend|idcw)/.test(d)) return 'DIVIDEND_PAYOUT';
   if (/segregated|side\s*pocket/.test(d)) return 'SEGREGATED';
   if (/\bpurchase\b|allot/.test(d)) return 'PURCHASE';
+  // Tax/stamp classification only when no action verb matched — these are
+  // standalone charge rows like "*** Stamp Duty ***" or "*** STT Paid ***".
+  if (/stamp\s*duty/.test(d)) return 'STAMP_DUTY';
+  if (/\bstt\b|securities\s*transaction\s*tax/.test(d)) return 'TAX';
+  if (/\btds\b|tax\s*deducted/.test(d)) return 'TAX';
   return 'OTHER';
 }
 
@@ -1240,7 +1244,14 @@ function cleanSchemeName(raw) {
 // These regexes tolerate that:
 //   "INF 740 KA 1 TE 9" matches as the 12-char ISIN.
 //   "D 896 - DSP Multi..." matches as a scheme code.
-const ISIN_TOLERANT_RE = /ISIN\s*:?\s*((?:[A-Z](?:\s*[A-Z0-9]){11}))(?![A-Z0-9])/i;
+// The 12-char ISIN sometimes lands on a different y-band than the word "ISIN",
+// with intervening junk like `ISIN :\t\tRegistrar : CAMS\nINF109K 015K 4`.
+// Allow up to 80 chars of anything between the label and the captured ISIN,
+// and anchor the capture on Indian country code "IN" (CAMS only ever reports
+// Indian mutual fund ISINs). Without the "IN" anchor, a lazy `[A-Z]` at the
+// start locks onto false positives like "S INF109K 015K" (starting from the
+// `S` of `CAMS`). The check-digit validator provides a second guard.
+const ISIN_TOLERANT_RE = /ISIN(?:[^\n]{0,80}?)(IN(?:\s*[A-Z0-9]){9}\s*\d)(?![A-Z0-9])/i;
 const SCHEME_CODE_RE = /^\s*[A-Z0-9](?:\s*[A-Z0-9]){0,9}\s*-\s*/;
 
 // ISO 6166 check-digit for ISIN. Guards against false positives where the
@@ -1829,9 +1840,21 @@ function buildDiagnostic(parseResult) {
   const PAN_PLACEHOLDER = 'AAAAA1234A';
   const FOLIO_PLACEHOLDER = 'XXXXX0000';
   const escapeRe = (c) => c.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  // Global PII patterns — emails, phone numbers, nominee names. Applied to
+  // every line regardless of position.
+  const EMAIL_RE = /\b[\w.+\-]+@[\w\-]+(?:\.[\w\-]+)+\b/g;
+  const PHONE_RE = /\+?\d[\s\-]?(?:\d[\s\-]?){7,}\d/g;
+  // "Nominee 1: <NAME>" — wipe the value up to the next "Nominee N:" or end.
+  const NOMINEE_RE = /(Nominee\s*\d+\s*:)\s*[^\n]*?(?=\s*Nominee\s*\d+\s*:|$)/gi;
+  // Bank account suffixes in redemption descriptions, e.g. "(HDFC BANK-DCB)".
+  const BANK_RE = /\((?:[A-Z][A-Z0-9\s\-]{2,}?\s*BANK[^)]*)\)/g;
   const redact = (text) => {
     if (!text) return text;
     let t = text;
+    t = t.replace(EMAIL_RE, 'redacted@example.com');
+    t = t.replace(PHONE_RE, '+0000000000');
+    t = t.replace(NOMINEE_RE, '$1 REDACTED');
+    t = t.replace(BANK_RE, '(BANK-REDACTED)');
     if (pan) t = t.split(pan).join(PAN_PLACEHOLDER);
     if (name) {
       t = t.split(name).join('REDACTED');
@@ -1839,8 +1862,7 @@ function buildDiagnostic(parseResult) {
     }
     // Folios are stored with whitespace stripped (e.g. "10786967/45"), but the
     // raw line text preserves surrounding spaces ("10786967 / 45"). Build a
-    // regex that tolerates whitespace around the `/` and `-` separators so the
-    // match actually lands.
+    // regex that tolerates whitespace around `/` and `-` so the match lands.
     for (const f of folios) {
       if (!f) continue;
       let pattern = '';
@@ -1849,12 +1871,20 @@ function buildDiagnostic(parseResult) {
       }
       try {
         t = t.replace(new RegExp(pattern, 'g'), FOLIO_PLACEHOLDER);
-      } catch (_) { /* fallback: straight split */
+      } catch (_) {
         t = t.split(f).join(FOLIO_PLACEHOLDER);
       }
     }
     return t;
   };
+  // Drop the investor header block (address, email, mobile) that sits above
+  // "PORTFOLIO SUMMARY". The parser doesn't need it for fund detection (folios
+  // come later), and it's the densest PII section in a CAS.
+  const rawLines = parseResult.rawLines || [];
+  let startIdx = 0;
+  for (let i = 0; i < rawLines.length; i++) {
+    if (/PORTFOLIO\s+SUMMARY/i.test(rawLines[i].text)) { startIdx = i; break; }
+  }
   return {
     version: parseResult.parseMetadata?.version,
     parseMetadata: parseResult.parseMetadata,
@@ -1874,7 +1904,7 @@ function buildDiagnostic(parseResult) {
       unitsSource: f.unitsSource,
       transactionCount: (f.transactions || []).length,
     })),
-    lines: (parseResult.rawLines || []).map(l => ({
+    lines: rawLines.slice(startIdx).map(l => ({
       page: l.page, y: Math.round(l.y), text: redact(l.text),
     })),
   };
@@ -2023,6 +2053,66 @@ function runParserFixtures() {
       if (!t) throw new Error('expected REDEMPTION transaction, got types ' + JSON.stringify(f.transactions.map(x => x.type)));
       if (Math.abs(t.amount - (-83591)) > 0.01) throw new Error('expected amount=-83591, got ' + t.amount);
       if (Math.abs(t.units - (-1609.888)) > 0.001) throw new Error('expected units=-1609.888, got ' + t.units);
+    },
+  });
+
+  // Fixture 2d — "Redemption less TDS, STT" — the description mentions both a
+  // trade (Redemption) and tax suffixes (TDS, STT). The classifier must treat
+  // this as REDEMPTION so the amount contributes to the invested-sum
+  // reconciliation; if it's mislabelled as TAX the warning will read "sum 0".
+  fixtures.push({
+    name: 'CAMS-DETAILED-redemption-with-tax-suffix',
+    lines: [
+      _mkLine(1, 800, 'Detailed Consolidated Account Statement'),
+      _mkLine(1, 780, 'ABCDE1234F'),
+      _mkLine(1, 770, 'Test User'),
+      _mkLine(1, 750, 'Nippon India Mutual Fund'),
+      _mkLine(1, 730, 'Folio No: 77777 / 0\t\tPAN: ABCDE1234F\t\tKYC: OK'),
+      _mkLine(1, 715, 'RMFAFAGG - NIPPON INDIA ARBITRAGE FUND - DIRECT GROWTH - ISIN : INF204K01XZ7'),
+      _mkLine(1, 700, 'Opening Unit Balance: 14,685.381'),
+      _mkLine(1, 680, '16-Jun-2025 Redemption less TDS, STT (300,000.00) (10,490.459)\t\t28.5977\t\t4,194.922'),
+      _mkLine(1, 665, '16-Jun-2025 *** STT Paid ***\t\t3.00'),
+      _mkLine(1, 620, 'Closing Unit Balance: 4,194.922\t\tTotal Cost Value: 117,616.68'),
+      _mkLine(1, 605, 'NAV on 17-Apr-2026: INR 30.1807\t\tMarket Value on 17-Apr-2026: INR 126,605.68'),
+      _mkLine(1, 40, 'CAMSCASWS'),
+    ],
+    expect: (res) => {
+      const f = res.funds[0];
+      if (!f) throw new Error('expected 1 fund');
+      const redemption = f.transactions.find(t => t.type === 'REDEMPTION');
+      if (!redemption) throw new Error('expected a REDEMPTION, got types ' + JSON.stringify(f.transactions.map(t => t.type)));
+      if (Math.abs(redemption.amount - (-300000)) > 0.01) throw new Error('expected REDEMPTION amount=-300000, got ' + redemption.amount);
+      const tax = f.transactions.find(t => t.type === 'TAX');
+      if (!tax) throw new Error('expected a TAX row for "*** STT Paid ***"');
+    },
+  });
+
+  // Fixture 2e — "ISIN :\t\tRegistrar : CAMS" followed by the actual ISIN on
+  // the next y-band. Tests that ISIN_TOLERANT_RE can skip past interposed
+  // "Registrar : CAMS" text to find the real code.
+  fixtures.push({
+    name: 'CAMS-DETAILED-isin-split-with-registrar',
+    lines: [
+      _mkLine(1, 800, 'Detailed Consolidated Account Statement'),
+      _mkLine(1, 780, 'ABCDE1234F'),
+      _mkLine(1, 770, 'Test User'),
+      _mkLine(1, 750, 'ICICI Prudential Mutual Fund'),
+      _mkLine(1, 730, 'Folio No: 12345 / 0\t\tPAN: ABCDE1234F\t\tKYC: OK'),
+      _mkLine(1, 715, 'P 8004- ICICI Prudential Multi - Asset Fund - Direct Plan - Growth ( Non- Demat ) - ISIN : Registrar : CAMS'),
+      _mkLine(1, 708, 'INF109K 015K 4( Advisor : INA 200005166)'),
+      _mkLine(1, 700, 'Opening Unit Balance: 0.000'),
+      _mkLine(1, 680, '25-Sep-2025 Purchase-BSE - - INA200005166 4,999.75 5.831\t\t857.4890\t\t5.831'),
+      _mkLine(1, 620, 'Closing Unit Balance: 5.831\t\tTotal Cost Value: 4,999.75'),
+      _mkLine(1, 605, 'NAV on 17-Apr-2026: INR 857.4890\t\tMarket Value on 17-Apr-2026: INR 5,000.00'),
+      _mkLine(1, 40, 'CAMSCASWS'),
+    ],
+    expect: (res) => {
+      const f = res.funds[0];
+      if (!f) throw new Error('expected 1 fund (ICICI Multi-Asset)');
+      if (f.isin !== 'INF109K015K4') throw new Error('expected ISIN=INF109K015K4, got ' + f.isin);
+      if (!f.schemeName || !/ICICI/i.test(f.schemeName)) {
+        throw new Error('expected scheme name containing "ICICI", got ' + JSON.stringify(f.schemeName));
+      }
     },
   });
 
