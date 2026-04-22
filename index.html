@@ -3148,7 +3148,10 @@ document.addEventListener('alpine:init', () => {
         session.unlocked = true;
         this.pinEntry = '';
         if (!this.$store.portfolio.funds.length) this.currentView = 'empty';
-        else this.currentView = 'dashboard';
+        else {
+          this.currentView = 'dashboard';
+          this.refreshNavs(true);
+        }
       } else {
         this.pinError = 'Incorrect PIN.';
         this.pinEntry = '';
