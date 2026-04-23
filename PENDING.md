@@ -38,7 +38,7 @@ Tested against exactly one real CAMS CAS (`CAS_01042025-17042026_*_unlocked.pdf`
 ## App features deferred from v1
 
 ### Explicit PRD §13 items (out of scope for v1, carried forward)
-- [x] **XIRR** per fund and portfolio-level. Requires a complete-history CAS; partial statements suppress XIRR with a "partial history" indicator.
+- [ ] **XIRR** per fund and portfolio-level.
 - [ ] **Goal tracking** — tag funds to goals (retirement, house, etc).
 - [ ] **Multi-portfolio support** — family-member portfolios via in-app switcher.
 - [ ] **PWA install** — Service Worker + Add to Home Screen. App currently works from cache after first load; not true offline.

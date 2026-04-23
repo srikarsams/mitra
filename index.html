@@ -368,27 +368,6 @@
         </div>
       </div>
 
-      <!-- Partial-history banner -->
-      <div x-show="importResult?.partialFunds?.length" class="bg-surface-container border border-outline-variant/60 rounded-xl p-5">
-        <div class="flex items-center gap-2 mb-3">
-          <span class="material-symbols-outlined text-outline">warning</span>
-          <p class="text-[14px] font-semibold text-primary">Partial statement detected</p>
-        </div>
-        <p class="text-[13px] text-on-surface-variant mb-3">
-          <span x-text="importResult?.partialFunds?.length"></span> fund(s) have units from before this statement's start date. XIRR and complete returns can't be computed for them until you re-import a CAS covering their full history.
-        </p>
-        <ul class="space-y-1 text-[12px] text-outline mb-4">
-          <template x-for="name in (importResult?.partialFunds || []).slice(0, 5)" :key="name">
-            <li>• <span class="text-on-surface" x-text="name"></span></li>
-          </template>
-          <li x-show="(importResult?.partialFunds?.length || 0) > 5" class="italic" x-text="`+ ${importResult.partialFunds.length - 5} more`"></li>
-        </ul>
-        <button @click="showCasHelp = true" type="button"
-                class="text-[13px] font-medium text-primary underline decoration-primary/30 underline-offset-2 hover:decoration-primary">
-          How to download a complete CAS
-        </button>
-      </div>
-
       <!-- Unmatched warning -->
       <div x-show="importResult?.unmatched?.length" class="bg-surface-container border border-outline-variant/40 rounded-xl p-5">
         <div class="flex items-center gap-2 mb-3">
@@ -496,24 +475,6 @@
               </span>
             </div>
           </div>
-          <!-- XIRR (portfolio) -->
-          <div class="bg-surface-container-lowest p-5 rounded-xl border border-outline-variant/30 flex flex-col justify-between h-28 md:col-span-2">
-            <div class="flex items-center gap-1.5">
-              <span class="text-[11px] font-medium text-on-surface-variant uppercase tracking-wider">XIRR</span>
-              <button x-show="summary.partialCount > 0" @click="showCasHelp = true" type="button"
-                      class="text-outline hover:text-primary transition-colors"
-                      :title="`${summary.partialCount} fund(s) have a partial transaction history — XIRR unavailable. Tap for CAS guidance.`">
-                <span class="material-symbols-outlined text-[16px]">info</span>
-              </button>
-            </div>
-            <div class="flex items-baseline gap-2 flex-wrap">
-              <span class="text-[22px] font-semibold"
-                    :class="summary.xirr == null ? 'text-outline' : pnlColor(summary.xirr)"
-                    x-text="fmt.xirr(summary.xirr)"></span>
-              <span x-show="summary.xirr == null && summary.partialCount > 0"
-                    class="text-[11px] text-outline">partial history</span>
-            </div>
-          </div>
         </div>
 
         <p class="text-[11px] uppercase tracking-wider text-outline">
@@ -540,12 +501,7 @@
             <!-- Title row -->
             <div class="flex items-start justify-between gap-6">
               <div class="min-w-0 flex-1">
-                <div class="flex items-center gap-2 flex-wrap">
-                  <h3 class="text-[15px] font-semibold text-primary leading-snug" x-text="fund.schemeName"></h3>
-                  <span x-show="fund.partialHistory"
-                        class="text-[10px] font-medium uppercase tracking-wider px-1.5 py-0.5 rounded bg-surface-container border border-outline-variant/50 text-outline"
-                        title="This fund had units before the statement's start date. XIRR and complete returns can't be computed.">Partial history</span>
-                </div>
+                <h3 class="text-[15px] font-semibold text-primary leading-snug" x-text="fund.schemeName"></h3>
                 <p class="text-[12px] text-on-surface-variant mt-1" x-text="[fund.amc, fund.category].filter(Boolean).join(' · ') || 'Mutual Fund'"></p>
               </div>
               <div class="text-right flex-shrink-0">
@@ -578,12 +534,6 @@
                   <span x-show="fund.dailyChangePct !== 0" x-text="` (${fmt.pct(fund.dailyChangePct)})`"></span>
                 </p>
               </div>
-              <div class="col-span-2 flex items-center justify-between pt-1">
-                <span class="text-[12px] text-on-surface-variant">XIRR</span>
-                <span class="text-[13px] font-semibold"
-                      :class="fund.xirr == null ? 'text-outline' : pnlColor(fund.xirr)"
-                      x-text="fmt.xirr(fund.xirr)"></span>
-              </div>
             </div>
           </div>
         </template>
@@ -611,11 +561,7 @@
       </button>
 
       <div>
-        <div class="flex items-center gap-2 flex-wrap">
-          <h1 class="text-[24px] md:text-[28px] font-bold text-primary tracking-tight leading-tight" x-text="activeFund?.schemeName"></h1>
-          <span x-show="activeFund?.partialHistory"
-                class="text-[10px] font-medium uppercase tracking-wider px-2 py-0.5 rounded bg-surface-container border border-outline-variant/50 text-outline">Partial history</span>
-        </div>
+        <h1 class="text-[24px] md:text-[28px] font-bold text-primary tracking-tight leading-tight" x-text="activeFund?.schemeName"></h1>
         <p class="text-[12px] text-on-surface-variant uppercase tracking-wider mt-2">
           <span x-text="activeFund?.amc"></span>
           <span x-show="activeFund?.category"> · <span x-text="activeFund?.category"></span></span>
@@ -652,19 +598,6 @@
         <div class="bg-surface-container-lowest p-5 rounded-xl border border-outline-variant/30">
           <p class="text-[11px] font-medium text-on-surface-variant uppercase tracking-wider mb-1">Today</p>
           <p class="text-[18px] font-semibold" :class="pnlColor(activeFund?.dailyChange)" x-text="fmt.inrSigned(activeFund?.dailyChange)"></p>
-        </div>
-        <div class="bg-surface-container-lowest p-5 rounded-xl border border-outline-variant/30 col-span-2">
-          <div class="flex items-center gap-1.5 mb-1">
-            <p class="text-[11px] font-medium text-on-surface-variant uppercase tracking-wider">XIRR</p>
-            <button x-show="activeFund?.partialHistory" @click="showCasHelp = true" type="button"
-                    class="text-outline hover:text-primary transition-colors"
-                    title="XIRR unavailable — statement starts mid-holding. Tap for CAS guidance.">
-              <span class="material-symbols-outlined text-[16px]">info</span>
-            </button>
-          </div>
-          <p class="text-[18px] font-semibold"
-             :class="activeFund?.xirr == null ? 'text-outline' : pnlColor(activeFund?.xirr)"
-             x-text="fmt.xirr(activeFund?.xirr)"></p>
         </div>
       </section>
 
@@ -759,16 +692,6 @@
         </div>
         <button
           type="button"
-          @click="openWhatsNew()"
-          class="mt-3 w-full flex items-center justify-between gap-4 px-5 py-4 bg-surface-container-lowest rounded-xl border border-outline-variant/40 hover:bg-surface-container-low transition-colors text-left">
-          <div class="min-w-0">
-            <p class="text-[13px] font-semibold text-primary">What's new</p>
-            <p class="text-[11px] text-outline uppercase tracking-wider" x-text="`Release ${whatsNew.version}`"></p>
-          </div>
-          <span class="material-symbols-outlined text-outline">campaign</span>
-        </button>
-        <button
-          type="button"
           x-show="hasDiagnostic"
           @click="showExportConfirm = true"
           class="mt-3 w-full flex items-center justify-between gap-4 px-5 py-4 bg-surface-container-lowest rounded-xl border border-outline-variant/40 hover:bg-surface-container-low transition-colors text-left">
@@ -825,7 +748,6 @@
         <p class="font-semibold text-primary mb-2">CAMS</p>
         <ol class="list-decimal ml-4 space-y-1 text-on-surface-variant">
           <li>Visit <a href="https://www.camsonline.com/Investors/Statements/Consolidated-Account-Statement" target="_blank" rel="noopener" class="text-primary underline decoration-primary/30 underline-offset-2">camsonline.com</a></li>
-          <li>Set <em>From Date → <strong class="text-primary">01-Jan-1990</strong></em> (or your earliest investment date) and <em>To Date → today</em>. A partial range breaks XIRR and full returns.</li>
           <li>Choose <em>Statement Type → <strong class="text-primary">Detailed</strong></em> (not Summary) and <em>Password protected → Yes</em></li>
           <li>Enter your email and PAN; the PDF is sent by email</li>
         </ol>
@@ -876,39 +798,6 @@
               class="flex-1 border border-outline-variant text-primary py-3 rounded-lg font-semibold text-[14px] hover:bg-surface-container transition-colors">Cancel</button>
       <button @click="confirmReset()"
               class="flex-1 bg-white border border-error text-error py-3 rounded-lg font-semibold text-[14px] hover:bg-error-container transition-colors">Reset</button>
-    </div>
-  </div>
-</div>
-
-<!-- What's new -->
-<div x-show="showWhatsNew" x-transition.opacity @click.self="dismissWhatsNew()"
-     class="fixed inset-0 z-[75] bg-black/30 flex items-center justify-center px-4">
-  <div class="w-full max-w-md bg-surface-container-lowest rounded-xl border border-outline-variant/40 shadow-[0_10px_30px_rgba(0,0,0,0.12)] overflow-hidden">
-    <div class="flex items-start justify-between px-6 pt-6 pb-3">
-      <div>
-        <p class="text-[11px] text-outline uppercase tracking-wider mb-1">Release</p>
-        <h2 class="text-[20px] font-bold text-primary tracking-tight" x-text="whatsNew.title"></h2>
-      </div>
-      <button @click="dismissWhatsNew()" class="p-1.5 text-outline hover:text-primary hover:bg-surface-container rounded-full transition-colors">
-        <span class="material-symbols-outlined">close</span>
-      </button>
-    </div>
-    <div class="px-6 py-4 space-y-4">
-      <template x-for="item in whatsNew.bullets" :key="item.heading">
-        <div class="flex gap-3">
-          <div class="w-9 h-9 flex-shrink-0 rounded-full bg-surface-container flex items-center justify-center">
-            <span class="material-symbols-outlined text-primary text-[20px]" x-text="item.icon"></span>
-          </div>
-          <div class="min-w-0">
-            <p class="text-[14px] font-semibold text-primary" x-text="item.heading"></p>
-            <p class="text-[13px] text-on-surface-variant leading-relaxed mt-0.5" x-text="item.body"></p>
-          </div>
-        </div>
-      </template>
-    </div>
-    <div class="px-6 py-4 border-t border-surface-container-high">
-      <button @click="dismissWhatsNew()"
-              class="w-full bg-primary text-white py-3 rounded-lg font-semibold text-[14px] hover:opacity-90 active:scale-[0.98] transition-all">Got it</button>
     </div>
   </div>
 </div>
@@ -990,20 +879,7 @@
 // ============================================================
 // App version — bump on each release and shown in Settings + footer.
 // ============================================================
-const APP_VERSION = '1.4.0';
-
-// Bump only when a release is worth announcing. Patch releases that don't
-// warrant a popup keep the same value so users aren't nagged.
-const WHATS_NEW_VERSION = '1.4.0';
-const WHATS_NEW = {
-  version: WHATS_NEW_VERSION,
-  title: "What's new in 1.4.0",
-  bullets: [
-    { icon: 'timeline', heading: 'XIRR returns', body: 'See annualised (XIRR) returns per fund and across your portfolio — alongside the existing total gain.' },
-    { icon: 'info', heading: 'Partial-statement detection', body: 'Mithra now flags funds whose CAS doesn\'t cover the full transaction history, and guides you to re-download a complete statement for accurate XIRR.' },
-    { icon: 'verified', heading: 'Multi-folio accuracy', body: 'Fixed an edge case where opening balances across multiple folios of the same fund were under-counted.' },
-  ],
-};
+const APP_VERSION = '1.3.0';
 
 // ============================================================
 // DB (Dexie)
@@ -1130,13 +1006,6 @@ const fmt = {
     if (n === 0) return '—';
     const sign = n > 0 ? '+' : '';
     return sign + n.toFixed(2) + '%';
-  },
-  // XIRR is a decimal rate (e.g. 0.1234 → "+12.34% p.a."). null → em-dash.
-  xirr(rate) {
-    if (rate == null || isNaN(rate)) return '—';
-    const pct = rate * 100;
-    const sign = pct > 0 ? '+' : '';
-    return sign + pct.toFixed(2) + '% p.a.';
   },
   greeting(d = new Date()) {
     const h = d.getHours();
@@ -1955,7 +1824,6 @@ function parseCAMSFromLines(lines, pageCount) {
       totalInvested: invested,
       investedSource,
       unitsSource,
-      openingBalance: f.openingBalance || 0,
     });
   }
 
@@ -1970,7 +1838,6 @@ function parseCAMSFromLines(lines, pageCount) {
       agg.folios.push(f.folioNumber);
       agg.totalUnits += f.totalUnits;
       agg.totalInvested += f.totalInvested;
-      agg.openingBalance = (agg.openingBalance || 0) + (f.openingBalance || 0);
       if (f.marketValue != null) agg.marketValue = (agg.marketValue || 0) + f.marketValue;
       if (f.casNav && !agg.casNav) { agg.casNav = f.casNav; agg.casNavDate = f.casNavDate; }
       agg.transactions.push(...f.transactions);
@@ -2664,96 +2531,7 @@ function runParserFixtures() {
 // ============================================================
 // portfolio — derived math
 // ============================================================
-
-// XIRR — Newton-Raphson with bisection fallback. `cashflows` is an array of
-// { date: epoch-ms, amount: signed-number }. Returns a decimal annual rate
-// (e.g. 0.1234 = 12.34% p.a.) or null when un-solvable.
-const MS_PER_YEAR = 365 * 86400000;
-function xnpv(rate, flows) {
-  const t0 = flows[0].date;
-  let s = 0;
-  for (const { date, amount } of flows) {
-    const years = (date - t0) / MS_PER_YEAR;
-    s += amount / Math.pow(1 + rate, years);
-  }
-  return s;
-}
-function xnpvDeriv(rate, flows) {
-  const t0 = flows[0].date;
-  let s = 0;
-  for (const { date, amount } of flows) {
-    const years = (date - t0) / MS_PER_YEAR;
-    if (years === 0) continue;
-    s += -years * amount / Math.pow(1 + rate, years + 1);
-  }
-  return s;
-}
-function computeXIRR(cashflows) {
-  if (!cashflows || cashflows.length < 2) return null;
-  const flows = cashflows
-    .filter(c => c && c.amount && isFinite(c.amount) && c.date != null)
-    .map(c => ({ date: typeof c.date === 'number' ? c.date : new Date(c.date).getTime(), amount: c.amount }))
-    .filter(c => isFinite(c.date))
-    .sort((a, b) => a.date - b.date);
-  if (flows.length < 2) return null;
-  const hasPos = flows.some(f => f.amount > 0);
-  const hasNeg = flows.some(f => f.amount < 0);
-  if (!hasPos || !hasNeg) return null;
-
-  // Newton-Raphson from a reasonable guess.
-  let rate = 0.1;
-  for (let i = 0; i < 50; i++) {
-    const f = xnpv(rate, flows);
-    if (Math.abs(f) < 1e-7) return rate;
-    const d = xnpvDeriv(rate, flows);
-    if (!isFinite(d) || d === 0) break;
-    const next = rate - f / d;
-    if (!isFinite(next) || next <= -0.9999) break;
-    if (Math.abs(next - rate) < 1e-9) return next;
-    rate = next;
-  }
-
-  // Bisection fallback. Only valid if the bracket straddles a root.
-  const lo = -0.9999, hi = 10;
-  const fLo = xnpv(lo, flows), fHi = xnpv(hi, flows);
-  if (!isFinite(fLo) || !isFinite(fHi)) return null;
-  if ((fLo > 0) === (fHi > 0)) return null; // no root in bracket
-  let a = lo, b = hi, fa = fLo;
-  for (let i = 0; i < 100; i++) {
-    const m = (a + b) / 2;
-    const fm = xnpv(m, flows);
-    if (!isFinite(fm)) return null;
-    if (Math.abs(fm) < 1e-7 || (b - a) / 2 < 1e-9) return m;
-    if ((fm > 0) === (fa > 0)) { a = m; fa = fm; } else { b = m; }
-  }
-  return null;
-}
-
-// Map a transaction to its signed cashflow at fund level. Returns 0 for no-op.
-// STAMP_DUTY is a real outflow (parser already counts it as cost); TAX is
-// deducted from redemption proceeds (already netted into that amount).
-function fundCashflow(t) {
-  switch (t.type) {
-    case 'PURCHASE':
-    case 'SIP':
-    case 'SWITCH_IN':
-    case 'STAMP_DUTY':
-      return -Math.abs(t.amount || 0);
-    case 'REDEMPTION':
-    case 'SWITCH_OUT':
-    case 'DIVIDEND_PAYOUT':
-      return Math.abs(t.amount || 0);
-    default:
-      return 0; // DIVIDEND_REINVEST, TAX, OTHER
-  }
-}
-// Portfolio-level: SWITCH_IN/OUT cancel out (internal transfers between funds).
-function portfolioCashflow(t) {
-  if (t.type === 'SWITCH_IN' || t.type === 'SWITCH_OUT') return 0;
-  return fundCashflow(t);
-}
-
-function computeFundRow(f, txns) {
+function computeFundRow(f) {
   const currentNav = f.currentNav || 0;
   const previousNav = f.previousNav || 0;
   const units = f.totalUnits || 0;
@@ -2763,27 +2541,10 @@ function computeFundRow(f, txns) {
   const totalPnLPct = invested > 0 ? (totalPnL / invested) * 100 : 0;
   const dailyChange = currentNav && previousNav ? units * (currentNav - previousNav) : 0;
   const dailyChangePct = previousNav ? ((currentNav - previousNav) / previousNav) * 100 : 0;
-
-  // Partial-history funds get no XIRR — the pre-period units lack cost/date.
-  const partialHistory = (f.openingBalance || 0) > 0;
-  let xirr = null;
-  if (!partialHistory) {
-    const flows = [];
-    for (const t of (txns || [])) {
-      const amt = fundCashflow(t);
-      if (amt !== 0 && t.date) flows.push({ date: new Date(t.date).getTime(), amount: amt });
-    }
-    if (currentValue > 0) {
-      const anchor = f.navDate || f.casNavDate || new Date().toISOString();
-      flows.push({ date: new Date(anchor).getTime(), amount: currentValue });
-    }
-    xirr = computeXIRR(flows);
-  }
-
-  return { ...f, currentValue, totalPnL, totalPnLPct, dailyChange, dailyChangePct, partialHistory, xirr };
+  return { ...f, currentValue, totalPnL, totalPnLPct, dailyChange, dailyChangePct };
 }
 
-function computeSummary(rows, txnsByFund) {
+function computeSummary(rows) {
   const totalValue = rows.reduce((s, f) => s + (f.currentValue || 0), 0);
   const totalInvested = rows.reduce((s, f) => s + (f.totalInvested || 0), 0);
   const totalPnL = totalValue - totalInvested;
@@ -2793,26 +2554,7 @@ function computeSummary(rows, txnsByFund) {
   const dailyChangePct = previousValue > 0 ? (dailyChange / previousValue) * 100 : 0;
   let navDate = '';
   for (const f of rows) if (f.navDate && f.navDate > navDate) navDate = f.navDate;
-
-  // Portfolio XIRR: fail-closed if ANY fund has partial history.
-  const partialCount = rows.reduce((n, f) => n + (f.partialHistory ? 1 : 0), 0);
-  let xirr = null;
-  if (partialCount === 0 && rows.length) {
-    const flows = [];
-    for (const f of rows) {
-      for (const t of ((txnsByFund && txnsByFund[f.id]) || [])) {
-        const amt = portfolioCashflow(t);
-        if (amt !== 0 && t.date) flows.push({ date: new Date(t.date).getTime(), amount: amt });
-      }
-    }
-    if (totalValue > 0) {
-      const anchor = navDate || new Date().toISOString();
-      flows.push({ date: new Date(anchor).getTime(), amount: totalValue });
-    }
-    xirr = computeXIRR(flows);
-  }
-
-  return { totalValue, totalInvested, totalPnL, totalPnLPct, dailyChange, dailyChangePct, navDate, xirr, partialCount };
+  return { totalValue, totalInvested, totalPnL, totalPnLPct, dailyChange, dailyChangePct, navDate };
 }
 
 function sortRows(rows, mode) {
@@ -2839,7 +2581,7 @@ const session = {
 
 function uuid() {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-    try { return crypto.randomUUID(); } catch (e) { /* fall through */ }
+    try { return uuid(); } catch (e) { /* fall through */ }
   }
   // Non-secure-context fallback (e.g. file://): RFC4122 v4-ish
   const bytes = new Uint8Array(16);
@@ -2869,24 +2611,11 @@ document.addEventListener('alpine:init', () => {
     async loadFromDB() {
       this.user = await DB.getUser();
       const funds = await DB.listFunds();
-      // Populate txnsByFund so derived math (XIRR, etc.) can resolve per-fund
-      // cashflows without separate lookups. Kept off the fund record itself
-      // so NAV-refresh writes don't balloon the persisted funds.
-      const allTxns = await db.transactions.toArray();
-      const byFund = {};
-      for (const t of allTxns) {
-        (byFund[t.fundId] || (byFund[t.fundId] = [])).push(t);
-      }
-      for (const list of Object.values(byFund)) {
-        list.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
-      }
-      this.txnsByFund = byFund;
       this.funds = funds;
     },
 
     async reloadTxns(fundId) {
       const t = await DB.listTxns(fundId);
-      t.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
       this.txnsByFund[fundId] = t;
       return t;
     },
@@ -2908,8 +2637,6 @@ document.addEventListener('alpine:init', () => {
     showForgotPinConfirm: false,
     showPinSetup: false,
     showExportConfirm: false,
-    showWhatsNew: false,
-    whatsNew: WHATS_NEW,
     hasDiagnostic: false,
     navBanner: '',
 
@@ -2966,7 +2693,6 @@ document.addEventListener('alpine:init', () => {
         this.currentView = 'dashboard';
         // Always trigger a NAV refresh on dashboard entry so the call is visible.
         this.refreshNavs(true);
-        this.maybeShowWhatsNew();
       }
       this.ready = true;
 
@@ -2998,28 +2724,12 @@ document.addEventListener('alpine:init', () => {
     },
 
     onEscape() {
-      if (this.showWhatsNew) this.dismissWhatsNew();
-      else if (this.showCasHelp) this.showCasHelp = false;
+      if (this.showCasHelp) this.showCasHelp = false;
       else if (this.showReplaceConfirm) this.showReplaceConfirm = false;
       else if (this.showResetConfirm) this.showResetConfirm = false;
       else if (this.showForgotPinConfirm) this.showForgotPinConfirm = false;
       else if (this.showExportConfirm) this.showExportConfirm = false;
       else if (this.showPinSetup) this.cancelPinSetup();
-    },
-
-    maybeShowWhatsNew() {
-      const seen = this.$store.portfolio.user?.whatsNewSeen;
-      if (seen !== WHATS_NEW_VERSION) this.showWhatsNew = true;
-    },
-
-    async dismissWhatsNew() {
-      this.showWhatsNew = false;
-      const u = await DB.saveUser({ whatsNewSeen: WHATS_NEW_VERSION });
-      this.$store.portfolio.user = u;
-    },
-
-    openWhatsNew() {
-      this.showWhatsNew = true;
     },
 
     // ----- Navigation -----
@@ -3059,11 +2769,10 @@ document.addEventListener('alpine:init', () => {
 
     // ----- Summary (computed live) -----
     get computedRows() {
-      const txnsByFund = this.$store.portfolio.txnsByFund || {};
-      return (this.$store.portfolio.funds || []).map(f => computeFundRow(f, txnsByFund[f.id]));
+      return (this.$store.portfolio.funds || []).map(computeFundRow);
     },
     get summary() {
-      return computeSummary(this.computedRows, this.$store.portfolio.txnsByFund || {});
+      return computeSummary(this.computedRows);
     },
     sortedFunds() { return sortRows(this.computedRows, this.sortBy); },
     cycleSort() {
@@ -3185,8 +2894,6 @@ document.addEventListener('alpine:init', () => {
           currentNav: f.casNav || 0,
           previousNav: 0,
           navDate: f.casNavDate || null,
-          casNavDate: f.casNavDate || null,
-          openingBalance: f.openingBalance || 0,
           _tmp: f.transactions,
         }));
         const txnRecords = [];
@@ -3258,7 +2965,6 @@ document.addEventListener('alpine:init', () => {
         pinHash: existingUser.pinHash || null,
         pinSalt: existingUser.pinSalt || null,
         lastNavRefresh: null,
-        whatsNewSeen: existingUser.whatsNewSeen || null,
       };
       await DB.replaceAll({ user: userPatch, funds: payload.funds, transactions: payload.transactions });
       await this.$store.portfolio.loadFromDB();
@@ -3274,7 +2980,6 @@ document.addEventListener('alpine:init', () => {
         if (!dates.length) return '';
         return `${fmt.dateShort(dates[0])} — ${fmt.dateShort(dates[dates.length - 1])}`;
       })();
-      const partialFunds = payload.funds.filter(f => (f.openingBalance || 0) > 0).map(f => f.schemeName);
       this.importResult = {
         investorName: payload.investorName,
         fundCount: payload.funds.length,
@@ -3283,7 +2988,6 @@ document.addEventListener('alpine:init', () => {
         dateRange,
         unmatched: payload.unmatched,
         warnings: payload.warnings,
-        partialFunds,
       };
       this.importStep = 'summary';
     },
@@ -3364,9 +3068,7 @@ document.addEventListener('alpine:init', () => {
     get activeFund() {
       if (!this.activeFundId) return null;
       const f = this.$store.portfolio.funds.find(x => x.id === this.activeFundId);
-      if (!f) return null;
-      const txns = this.$store.portfolio.txnsByFund[f.id] || [];
-      return computeFundRow(f, txns);
+      return f ? computeFundRow(f) : null;
     },
     activeFundTxns() {
       if (!this.activeFundId) return [];
@@ -3449,7 +3151,6 @@ document.addEventListener('alpine:init', () => {
         else {
           this.currentView = 'dashboard';
           this.refreshNavs(true);
-          this.maybeShowWhatsNew();
         }
       } else {
         this.pinError = 'Incorrect PIN.';
