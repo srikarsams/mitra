@@ -2581,7 +2581,7 @@ const session = {
 
 function uuid() {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-    try { return uuid(); } catch (e) { /* fall through */ }
+    try { return crypto.randomUUID(); } catch (e) { /* fall through */ }
   }
   // Non-secure-context fallback (e.g. file://): RFC4122 v4-ish
   const bytes = new Uint8Array(16);
